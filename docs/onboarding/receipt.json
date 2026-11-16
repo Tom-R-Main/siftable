@@ -1,0 +1,174 @@
+{
+  "startedAt": "2026-11-16T19:27:19.729Z",
+  "uid": 10001,
+  "checks": [
+    "fresh non-root home, npm, application, Docker image/container/volume state",
+    "missing configuration fails before bootstrap",
+    "README bootstrap and first CLI access with host-owned private credentials",
+    "CLI create/claim -> actual stdio MCP context/evidence/review -> owner CLI acceptance",
+    "documented stop/start retains accepted work",
+    "README backup/verify/restore/switch preserves actual CLI/MCP work and note"
+  ],
+  "runtime": {
+    "node": "v22.23.3",
+    "platform": "linux",
+    "arch": "arm64",
+    "docker": "29.9.3",
+    "compose": "5.7.1"
+  },
+  "identity": {
+    "ownerId": "8d157ebf-1201-4891-b13b-3e748668df18",
+    "principalId": "8d44a743-5671-4353-b7e5-a89ca163a3ab",
+    "scopeId": null
+  },
+  "modules": [
+    {
+      "id": "context",
+      "version": 2,
+      "enabled": true
+    },
+    {
+      "id": "extensions",
+      "version": 2,
+      "enabled": true
+    },
+    {
+      "id": "foundation",
+      "version": 2,
+      "enabled": true
+    },
+    {
+      "id": "planning",
+      "version": 2,
+      "enabled": true
+    },
+    {
+      "id": "projects",
+      "version": 2,
+      "enabled": true
+    },
+    {
+      "id": "work",
+      "version": 2,
+      "enabled": true
+    }
+  ],
+  "schemas": {
+    "types": [
+      {
+        "type": "context.note",
+        "module": "context"
+      },
+      {
+        "type": "context.packet",
+        "module": "context"
+      },
+      {
+        "type": "extensions.object",
+        "module": "extensions"
+      },
+      {
+        "type": "planning.task",
+        "module": "planning"
+      },
+      {
+        "type": "projects.project",
+        "module": "projects"
+      },
+      {
+        "type": "work.item",
+        "module": "work"
+      }
+    ],
+    "extensions": []
+  },
+  "flow": {
+    "runId": "b7d8fef4-e0c2-450d-8cc5-4722d9972447",
+    "projectId": "f158a137-205b-49c2-a845-56a0a55853bb",
+    "noteId": "4dd18f09-6c2a-4615-8e2e-475a5566ea12",
+    "workId": "53587623-01eb-4d47-85fa-0156116bccb0",
+    "packetId": "9cbc25c5-5a29-4734-8468-ac42dcd0adc1",
+    "status": "done",
+    "coverage": "commands_passed",
+    "agentAcceptanceRefused": true,
+    "credentialRevoked": true
+  },
+  "backup": {
+    "backup": "/run/sift/backup-001",
+    "sha256": "f16e40c1cb92afa22fdcb1a5e471ed7f675a714f6ebbb83dbc3a9d3964d0c7ec",
+    "modules": [
+      "context",
+      "extensions",
+      "foundation",
+      "planning",
+      "projects",
+      "work"
+    ],
+    "tables": 23,
+    "rows": 67
+  },
+  "backupVerified": {
+    "verified": true,
+    "sha256": "f16e40c1cb92afa22fdcb1a5e471ed7f675a714f6ebbb83dbc3a9d3964d0c7ec",
+    "modules": [
+      "context",
+      "extensions",
+      "foundation",
+      "planning",
+      "projects",
+      "work"
+    ],
+    "tables": 23
+  },
+  "restore": {
+    "database": "siftable_recovered",
+    "integrity": "verified",
+    "modules": [
+      "context",
+      "extensions",
+      "foundation",
+      "planning",
+      "projects",
+      "work"
+    ],
+    "tables": 23,
+    "invalidatedLeases": 0,
+    "credentials": "Existing protected credential files can be repointed, or issue new credentials for the restored owner/scope"
+  },
+  "finishedAt": "2026-11-16T19:28:11.184Z",
+  "source": {
+    "head": "6d51c29a65377993d65d052411b708365caa550e",
+    "archiveSha256": "eea7695044aefa8c42dbbfef4c4991636a53fef5fc29a4fb5a7eeb65cac21db9"
+  },
+  "baseline": {
+    "head": "2c553a5",
+    "error": "EACCES: permission denied opening .local/owner.json",
+    "directory": "0700 uid=1000 gid=1000",
+    "credential": "0600 uid=0 gid=0",
+    "startupReportedReady": true
+  },
+  "regression": {
+    "unitCliTests": 10,
+    "integrationScenarios": 15,
+    "nodeIntegrationTestsIncludingParent": 16,
+    "failures": 0,
+    "skips": 0
+  },
+  "scope": {
+    "freshLinuxEnvironment": true,
+    "independentHuman": false,
+    "secondPhysicalMachine": false,
+    "published": false,
+    "hostSocketMounted": false,
+    "hostHomeMounted": false,
+    "hostPortsPublished": false,
+    "testedCommit": "6d51c29a65377993d65d052411b708365caa550e",
+    "laterChanges": "Evidence documents and README readiness command formatting only."
+  },
+  "existingPilot": {
+    "before": "92b59b38524f67482b36f8b4a333878fc117257a36931b1f62456ec1de53698c sha256:591c175d369236234f1415aa637df92a394163e5db99ec95027fda17b96a8e22 2026-11-16T19:12:03.204090254Z",
+    "after": "92b59b38524f67482b36f8b4a333878fc117257a36931b1f62456ec1de53698c sha256:591c175d369236234f1415aa637df92a394163e5db99ec95027fda17b96a8e22 2026-11-16T19:12:03.204090254Z",
+    "health": "passed",
+    "databaseMutations": false
+  }
+}

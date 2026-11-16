@@ -1,0 +1,13 @@
+Source: 2c553a5; fresh Linux arm64; Node 22.23.3; normal user 1000.
+Empty Docker daemon and application/npm state.
+README npm ci, npm run build and npm run local completed; startup reported ready.
+
+
+> siftable-headless@0.1.0 sift
+> node packages/cli/dist/index.js catalog --config .local/owner.json
+
+{"error":"EACCES: permission denied, open '/workspace/.local/owner.json'"}
+
+Observed file metadata:
+700 1000:1000 /workspace/.local
+600 0:0 /workspace/.local/owner.json

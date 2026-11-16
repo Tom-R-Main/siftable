@@ -19,13 +19,13 @@ Acceptance journey:
 5. Stop/restart, upgrade an older database, back up, restore into a fresh database and continue useful work with identical prior records and intentionally invalidated active leases.
 6. Repeat the same journey using only the README and packaged artifacts on another host, with no access to the old monorepo.
 
-Steps 1–5 have automated local acceptance coverage. The extraction itself has now completed two actual agent handoffs and a recovery drill; see [the pilot report](pilot/2026-11-16.md). Step 6 and independent human usability are still unproven.
+Steps 1–5 have automated local acceptance coverage. The extraction itself has now completed two actual agent handoffs and a recovery drill; see [the pilot report](pilot/2026-11-16.md). The setup and first-work/restart/recovery portion of step 6 now passes in an isolated clean Linux environment using only committed README-linked source; see [the onboarding report](onboarding/2026-11-16.md). This automated proof is not an independent human or second physical host. Independent human usability and the wider host matrix remain unproven.
 
 ## Next steps, in order
 
 1. **First local project: completed.** The extraction pilot used three separately delegated agents for two handoffs and a real recovery drill. It exposed and repaired CLI help, MCP schema defaults and artifact receipt friction. Repeat use remains worth observing; this single run is not outside adoption. Do not migrate production/private source data implicitly.
 2. **Close observed gaps and stabilize the contract.** Add generated operation examples/reference, a doctor command, explicit compatibility/version policy and release upgrade instructions. Add repository checkout mapping only if the pilot requires automatic project resolution; use explicit project IDs until then.
-3. **Make the local beta independently reproducible.** Verify the README on a second host, test a larger representative dataset, review credentials/RLS/restore failure paths, and document backup retention and recovery expectations. No performance or security certification is implied by functional acceptance.
+3. **Make the local beta independently reproducible.** The automated clean-Linux README gate now passes. Next, have an independent operator follow it without live hints, review credentials/RLS/restore failure paths, and then test a representative dataset and document backup retention expectations. No performance or security certification is implied by functional acceptance.
 4. **Prepare, then approve a public release.** Select the root license, check provenance/notices, pin release artifacts and publish only after Thomas explicitly authorizes it. A local repository and passing suite are not a release.
 5. **Validate usefulness after release.** Seek two voluntary outside users who finish the journey without private assistance, then observe whether they return for another project/handoff. Installation count is not evidence of recurring value.
 

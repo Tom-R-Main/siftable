@@ -230,7 +230,13 @@ docker compose stop
 docker compose start
 ```
 
-After starting or switching databases, wait for `node -e 'fetch(`http://127.0.0.1:${process.env.SIFT_PORT || 8088}/health`).then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))'` to succeed before running API commands (or rerun `npm run local` for its readiness check). A healthy server alone is not workflow proof; use the example above.
+After starting or switching databases, wait for this command to succeed before running API commands (or rerun `npm run local` for its readiness check):
+
+```sh
+node -e 'fetch(`http://127.0.0.1:${process.env.SIFT_PORT || 8088}/health`).then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))'
+```
+
+A healthy server alone is not workflow proof; use the example above.
 
 If setup fails, keep the error and rerun after correcting its cause. Do not delete `.local/` or use `docker compose down -v` as troubleshooting: credentials and database state belong together. Check Docker access with `docker info`, port conflicts with `docker compose ps`, and whether the requested modules are enabled with `modules.list`. A CLI `EACCES` on an installation made with an earlier build can mean root-owned files; inspect ownership with `ls -ld .local .local/owner.json` and correct ownership locally without loosening file modes. Do not post file contents.
 

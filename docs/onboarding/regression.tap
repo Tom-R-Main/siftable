@@ -1,0 +1,107 @@
+TAP version 13
+# Subtest: standalone headless acceptance on real PostgreSQL and subprocess clients
+    # Subtest: context-only, work-only and extension-only have physically independent schemas
+    ok 1 - context-only, work-only and extension-only have physically independent schemas
+      ---
+      duration_ms: 1879.429668
+      type: 'test'
+      ...
+    # Subtest: version one data upgrades in place and migration drift fails closed
+    ok 2 - version one data upgrades in place and migration drift fails closed
+      ---
+      duration_ms: 1334.394209
+      type: 'test'
+      ...
+    # Subtest: CLI creates project, note, planning task and linked work; idempotency is durable
+    ok 3 - CLI creates project, note, planning task and linked work; idempotency is durable
+      ---
+      duration_ms: 776.778501
+      type: 'test'
+      ...
+    # Subtest: two independent principals race; stale, wrong-owner and expired claims are rejected
+    ok 4 - two independent principals race; stale, wrong-owner and expired claims are rejected
+      ---
+      duration_ms: 1197.640625
+      type: 'test'
+      ...
+    # Subtest: agent A records failed evidence and releases; agent B resumes through actual MCP
+    ok 5 - agent A records failed evidence and releases; agent B resumes through actual MCP
+      ---
+      duration_ms: 1072.29825
+      type: 'test'
+      ...
+    # Subtest: negative evidence controls and version changes never produce vacuous success
+    ok 6 - negative evidence controls and version changes never produce vacuous success
+      ---
+      duration_ms: 117.529626
+      type: 'test'
+      ...
+    # Subtest: schema definitions work without code changes; invalid records, references and breaking changes fail
+    ok 7 - schema definitions work without code changes; invalid records, references and breaking changes fail
+      ---
+      duration_ms: 470.000958
+      type: 'test'
+      ...
+    # Subtest: scope, restricted SQL role, immutable history and credential revocation enforce boundaries
+    ok 8 - scope, restricted SQL role, immutable history and credential revocation enforce boundaries
+      ---
+      duration_ms: 383.783
+      type: 'test'
+      ...
+    # Subtest: module changes refuse dependencies and hidden direct calls; packet omissions are explicit
+    ok 9 - module changes refuse dependencies and hidden direct calls; packet omissions are explicit
+      ---
+      duration_ms: 744.130375
+      type: 'test'
+      ...
+    # Subtest: CRUD revisions, deletion, restore and custom relationship editing work through CLI
+    ok 10 - CRUD revisions, deletion, restore and custom relationship editing work through CLI
+      ---
+      duration_ms: 4741.077419
+      type: 'test'
+      ...
+    # Subtest: work editing, cycle controls, blocked and failed retries, artifacts and terminal protection
+    ok 11 - work editing, cycle controls, blocked and failed retries, artifacts and terminal protection
+      ---
+      duration_ms: 3774.866585
+      type: 'test'
+      ...
+    # Subtest: native backup restores exact records, schemas and receipts; corruption and overwrite are refused
+    ok 12 - native backup restores exact records, schemas and receipts; corruption and overwrite are refused
+      ---
+      duration_ms: 2438.992543
+      type: 'test'
+      ...
+    # Subtest: context-only backup preserves disabled modules and rejects a mismatched data manifest
+    ok 13 - context-only backup preserves disabled modules and rejects a mismatched data manifest
+      ---
+      duration_ms: 1526.970459
+      type: 'test'
+      ...
+    # Subtest: editing previously verified released work invalidates old evidence
+    ok 14 - editing previously verified released work invalidates old evidence
+      ---
+      duration_ms: 187.224375
+      type: 'test'
+      ...
+    # Subtest: restart preserves accepted work and idempotency receipts
+    ok 15 - restart preserves accepted work and idempotency receipts
+      ---
+      duration_ms: 561.789375
+      type: 'test'
+      ...
+    1..15
+ok 1 - standalone headless acceptance on real PostgreSQL and subprocess clients
+  ---
+  duration_ms: 22723.609552
+  type: 'test'
+  ...
+1..1
+# tests 16
+# suites 0
+# pass 16
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 23165.539678
