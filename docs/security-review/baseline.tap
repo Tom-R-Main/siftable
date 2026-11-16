@@ -1,0 +1,217 @@
+TAP version 13
+# Subtest: standalone headless acceptance on real PostgreSQL and subprocess clients
+    # Subtest: context-only, work-only and extension-only have physically independent schemas
+    ok 1 - context-only, work-only and extension-only have physically independent schemas
+      ---
+      duration_ms: 3673.402627
+      type: 'test'
+      ...
+    # Subtest: version one data upgrades in place and migration drift fails closed
+    ok 2 - version one data upgrades in place and migration drift fails closed
+      ---
+      duration_ms: 1797.420542
+      type: 'test'
+      ...
+    # Subtest: install refuses disabled prerequisites atomically
+    not ok 3 - install refuses disabled prerequisites atomically
+      ---
+      duration_ms: 936.392584
+      type: 'test'
+      location: '/workspace/tests/acceptance/headless.test.mjs:289:13'
+      failureType: 'testCodeFailure'
+      error: 'Missing expected rejection.'
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      operator: 'rejects'
+      stack: |-
+        process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+        async TestContext.<anonymous> (file:///workspace/tests/acceptance/headless.test.mjs:295:9)
+        async Test.run (node:internal/test_runner/test:1054:7)
+        async TestContext.<anonymous> (file:///workspace/tests/acceptance/headless.test.mjs:289:5)
+        async Test.run (node:internal/test_runner/test:1054:7)
+        async startSubtestAfterBootstrap (node:internal/test_runner/harness:296:3)
+      ...
+    # Subtest: historical claim retry preserves newer CLI lease custody
+    not ok 4 - historical claim retry preserves newer CLI lease custody
+      ---
+      duration_ms: 2031.882126
+      type: 'test'
+      location: '/workspace/tests/acceptance/headless.test.mjs:306:13'
+      failureType: 'testCodeFailure'
+      error: |-
+        Command failed: /usr/local/bin/node /app/packages/cli/dist/index.js work.start --config /workspace/.local/acceptance/f61ea4aa51b547d391076102b45e8a23/custody_guard/worker.json --json {"id":"0f8fd41c-5c9e-46a4-9918-71d58128bfef"} --key start-b
+        {"error":"An active lease owned by this principal and epoch is required"}
+
+      code: 1
+      stack: |-
+        genericNodeError (node:internal/errors:983:15)
+        wrappedFn (node:internal/errors:537:14)
+        ChildProcess.exithandler (node:child_process:417:12)
+        ChildProcess.emit (node:events:519:28)
+        maybeClose (node:internal/child_process:1101:16)
+        ChildProcess._handle.onexit (node:internal/child_process:304:5)
+      ...
+    # Subtest: restore reconciles lost creation and publish responses without false quarantine
+        # Subtest: created
+        not ok 1 - created
+          ---
+          duration_ms: 214.353167
+          type: 'test'
+          location: '/workspace/tests/acceptance/headless.test.mjs:327:63'
+          failureType: 'testCodeFailure'
+          error: |-
+            Creation itself must quarantine non-superuser connections
+
+            -1 !== 0
+
+          code: 'ERR_ASSERTION'
+          name: 'AssertionError'
+          expected: 0
+          actual: -1
+          operator: 'strictEqual'
+          stack: |-
+            TestContext.<anonymous> (file:///workspace/tests/acceptance/headless.test.mjs:333:43)
+            process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+            async Test.run (node:internal/test_runner/test:1054:7)
+            async TestContext.<anonymous> (file:///workspace/tests/acceptance/headless.test.mjs:327:55)
+            async Test.run (node:internal/test_runner/test:1054:7)
+            async TestContext.<anonymous> (file:///workspace/tests/acceptance/headless.test.mjs:320:5)
+            async Test.run (node:internal/test_runner/test:1054:7)
+            async startSubtestAfterBootstrap (node:internal/test_runner/harness:296:3)
+          ...
+        # Subtest: published
+        not ok 2 - published
+          ---
+          duration_ms: 306.031375
+          type: 'test'
+          location: '/workspace/tests/acceptance/headless.test.mjs:327:63'
+          failureType: 'testCodeFailure'
+          error: |-
+            Lost publication response must be reconciled before claiming quarantine
+
+            true !== false
+
+          code: 'ERR_ASSERTION'
+          name: 'AssertionError'
+          expected: false
+          actual: true
+          operator: 'strictEqual'
+          stack: |-
+            TestContext.<anonymous> (file:///workspace/tests/acceptance/headless.test.mjs:334:23)
+            process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+            async Test.run (node:internal/test_runner/test:1054:7)
+            async TestContext.<anonymous> (file:///workspace/tests/acceptance/headless.test.mjs:327:55)
+            async Test.run (node:internal/test_runner/test:1054:7)
+            async TestContext.<anonymous> (file:///workspace/tests/acceptance/headless.test.mjs:320:5)
+            async Test.run (node:internal/test_runner/test:1054:7)
+            async startSubtestAfterBootstrap (node:internal/test_runner/harness:296:3)
+          ...
+        1..2
+    not ok 5 - restore reconciles lost creation and publish responses without false quarantine
+      ---
+      duration_ms: 1071.869209
+      type: 'test'
+      location: '/workspace/tests/acceptance/headless.test.mjs:320:13'
+      failureType: 'subtestsFailed'
+      error: '2 subtests failed'
+      code: 'ERR_TEST_FAILURE'
+      stack: |-
+        async TestContext.<anonymous> (file:///workspace/tests/acceptance/headless.test.mjs:320:5)
+      ...
+    # Subtest: CLI creates project, note, planning task and linked work; idempotency is durable
+    ok 6 - CLI creates project, note, planning task and linked work; idempotency is durable
+      ---
+      duration_ms: 663.111251
+      type: 'test'
+      ...
+    # Subtest: two independent principals race; stale, wrong-owner and expired claims are rejected
+    ok 7 - two independent principals race; stale, wrong-owner and expired claims are rejected
+      ---
+      duration_ms: 1171.834667
+      type: 'test'
+      ...
+    # Subtest: agent A records failed evidence and releases; agent B resumes through actual MCP
+    ok 8 - agent A records failed evidence and releases; agent B resumes through actual MCP
+      ---
+      duration_ms: 1005.589459
+      type: 'test'
+      ...
+    # Subtest: negative evidence controls and version changes never produce vacuous success
+    ok 9 - negative evidence controls and version changes never produce vacuous success
+      ---
+      duration_ms: 67.237
+      type: 'test'
+      ...
+    # Subtest: schema definitions work without code changes; invalid records, references and breaking changes fail
+    ok 10 - schema definitions work without code changes; invalid records, references and breaking changes fail
+      ---
+      duration_ms: 442.982625
+      type: 'test'
+      ...
+    # Subtest: scope, restricted SQL role, immutable history and credential revocation enforce boundaries
+    ok 11 - scope, restricted SQL role, immutable history and credential revocation enforce boundaries
+      ---
+      duration_ms: 368.913917
+      type: 'test'
+      ...
+    # Subtest: module changes refuse dependencies and hidden direct calls; packet omissions are explicit
+    ok 12 - module changes refuse dependencies and hidden direct calls; packet omissions are explicit
+      ---
+      duration_ms: 559.865
+      type: 'test'
+      ...
+    # Subtest: CRUD revisions, deletion, restore and custom relationship editing work through CLI
+    ok 13 - CRUD revisions, deletion, restore and custom relationship editing work through CLI
+      ---
+      duration_ms: 4063.272794
+      type: 'test'
+      ...
+    # Subtest: work editing, cycle controls, blocked and failed retries, artifacts and terminal protection
+    ok 14 - work editing, cycle controls, blocked and failed retries, artifacts and terminal protection
+      ---
+      duration_ms: 3124.085543
+      type: 'test'
+      ...
+    # Subtest: native backup restores exact records, schemas and receipts; corruption and overwrite are refused
+    ok 15 - native backup restores exact records, schemas and receipts; corruption and overwrite are refused
+      ---
+      duration_ms: 2302.788084
+      type: 'test'
+      ...
+    # Subtest: context-only backup preserves disabled modules and rejects a mismatched data manifest
+    ok 16 - context-only backup preserves disabled modules and rejects a mismatched data manifest
+      ---
+      duration_ms: 2527.210502
+      type: 'test'
+      ...
+    # Subtest: editing previously verified released work invalidates old evidence
+    ok 17 - editing previously verified released work invalidates old evidence
+      ---
+      duration_ms: 266.255458
+      type: 'test'
+      ...
+    # Subtest: restart preserves accepted work and idempotency receipts
+    ok 18 - restart preserves accepted work and idempotency receipts
+      ---
+      duration_ms: 450.140583
+      type: 'test'
+      ...
+    1..18
+not ok 1 - standalone headless acceptance on real PostgreSQL and subprocess clients
+  ---
+  duration_ms: 32212.593723
+  type: 'test'
+  location: '/workspace/tests/acceptance/headless.test.mjs:175:1'
+  failureType: 'subtestsFailed'
+  error: '3 subtests failed'
+  code: 'ERR_TEST_FAILURE'
+  ...
+1..1
+# tests 21
+# suites 0
+# pass 15
+# fail 6
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 32910.352348

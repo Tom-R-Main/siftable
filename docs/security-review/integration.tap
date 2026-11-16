@@ -1,0 +1,180 @@
+TAP version 13
+# Subtest: standalone headless acceptance on real PostgreSQL and subprocess clients
+    # Subtest: context-only, work-only and extension-only have physically independent schemas
+    ok 1 - context-only, work-only and extension-only have physically independent schemas
+      ---
+      duration_ms: 2148.891251
+      type: 'test'
+      ...
+    # Subtest: version one data upgrades in place and migration drift fails closed
+    ok 2 - version one data upgrades in place and migration drift fails closed
+      ---
+      duration_ms: 1107.889667
+      type: 'test'
+      ...
+    # Subtest: install refuses disabled prerequisites atomically
+    ok 3 - install refuses disabled prerequisites atomically
+      ---
+      duration_ms: 1335.811668
+      type: 'test'
+      ...
+    # Subtest: historical claim retry preserves newer CLI lease custody
+    ok 4 - historical claim retry preserves newer CLI lease custody
+      ---
+      duration_ms: 1401.864001
+      type: 'test'
+      ...
+    # Subtest: module installation serializes against dependency disable
+    ok 5 - module installation serializes against dependency disable
+      ---
+      duration_ms: 721.306042
+      type: 'test'
+      ...
+    # Subtest: lease resolver preserves write-only scopes and mutation retries
+    ok 6 - lease resolver preserves write-only scopes and mutation retries
+      ---
+      duration_ms: 1925.217709
+      type: 'test'
+      ...
+    # Subtest: pre-upgrade lease files can replay released mutations and adopt a fresh claim
+    ok 7 - pre-upgrade lease files can replay released mutations and adopt a fresh claim
+      ---
+      duration_ms: 957.814251
+      type: 'test'
+      ...
+    # Subtest: delayed claim response cannot replace newer custody
+    ok 8 - delayed claim response cannot replace newer custody
+      ---
+      duration_ms: 1227.899042
+      type: 'test'
+      ...
+    # Subtest: same-endpoint restore permits lower and reused epochs with existing custody
+    ok 9 - same-endpoint restore permits lower and reused epochs with existing custody
+      ---
+      duration_ms: 2201.797668
+      type: 'test'
+      ...
+    # Subtest: restore reconciles lost creation and publish responses without false quarantine
+        # Subtest: non-superuser prerequisite refuses before creating a target
+        ok 1 - non-superuser prerequisite refuses before creating a target
+          ---
+          duration_ms: 107.571584
+          type: 'test'
+          ...
+        # Subtest: created
+        ok 2 - created
+          ---
+          duration_ms: 411.811334
+          type: 'test'
+          ...
+        # Subtest: published
+        ok 3 - published
+          ---
+          duration_ms: 321.042625
+          type: 'test'
+          ...
+        # Subtest: unknown
+        ok 4 - unknown
+          ---
+          duration_ms: 270.712375
+          type: 'test'
+          ...
+        1..4
+    ok 10 - restore reconciles lost creation and publish responses without false quarantine
+      ---
+      duration_ms: 1567.126417
+      type: 'test'
+      ...
+    # Subtest: CLI creates project, note, planning task and linked work; idempotency is durable
+    ok 11 - CLI creates project, note, planning task and linked work; idempotency is durable
+      ---
+      duration_ms: 688.227209
+      type: 'test'
+      ...
+    # Subtest: two independent principals race; stale, wrong-owner and expired claims are rejected
+    ok 12 - two independent principals race; stale, wrong-owner and expired claims are rejected
+      ---
+      duration_ms: 1294.651792
+      type: 'test'
+      ...
+    # Subtest: agent A records failed evidence and releases; agent B resumes through actual MCP
+    ok 13 - agent A records failed evidence and releases; agent B resumes through actual MCP
+      ---
+      duration_ms: 1036.871376
+      type: 'test'
+      ...
+    # Subtest: negative evidence controls and version changes never produce vacuous success
+    ok 14 - negative evidence controls and version changes never produce vacuous success
+      ---
+      duration_ms: 109.574959
+      type: 'test'
+      ...
+    # Subtest: schema definitions work without code changes; invalid records, references and breaking changes fail
+    ok 15 - schema definitions work without code changes; invalid records, references and breaking changes fail
+      ---
+      duration_ms: 428.442416
+      type: 'test'
+      ...
+    # Subtest: scope, restricted SQL role, immutable history and credential revocation enforce boundaries
+    ok 16 - scope, restricted SQL role, immutable history and credential revocation enforce boundaries
+      ---
+      duration_ms: 324.784375
+      type: 'test'
+      ...
+    # Subtest: module changes refuse dependencies and hidden direct calls; packet omissions are explicit
+    ok 17 - module changes refuse dependencies and hidden direct calls; packet omissions are explicit
+      ---
+      duration_ms: 595.4685
+      type: 'test'
+      ...
+    # Subtest: CRUD revisions, deletion, restore and custom relationship editing work through CLI
+    ok 18 - CRUD revisions, deletion, restore and custom relationship editing work through CLI
+      ---
+      duration_ms: 3621.015544
+      type: 'test'
+      ...
+    # Subtest: work editing, cycle controls, blocked and failed retries, artifacts and terminal protection
+    ok 19 - work editing, cycle controls, blocked and failed retries, artifacts and terminal protection
+      ---
+      duration_ms: 3265.544793
+      type: 'test'
+      ...
+    # Subtest: native backup restores exact records, schemas and receipts; corruption and overwrite are refused
+    ok 20 - native backup restores exact records, schemas and receipts; corruption and overwrite are refused
+      ---
+      duration_ms: 2181.910418
+      type: 'test'
+      ...
+    # Subtest: context-only backup preserves disabled modules and rejects a mismatched data manifest
+    ok 21 - context-only backup preserves disabled modules and rejects a mismatched data manifest
+      ---
+      duration_ms: 3319.461502
+      type: 'test'
+      ...
+    # Subtest: editing previously verified released work invalidates old evidence
+    ok 22 - editing previously verified released work invalidates old evidence
+      ---
+      duration_ms: 423.084708
+      type: 'test'
+      ...
+    # Subtest: restart preserves accepted work and idempotency receipts
+    ok 23 - restart preserves accepted work and idempotency receipts
+      ---
+      duration_ms: 472.466792
+      type: 'test'
+      ...
+    1..23
+ok 1 - standalone headless acceptance on real PostgreSQL and subprocess clients
+  ---
+  duration_ms: 39309.319269
+  type: 'test'
+  ...
+1..1
+# tests 28
+# suites 0
+# pass 28
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 39574.432727

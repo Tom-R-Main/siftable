@@ -1,0 +1,30 @@
+{
+  "baseline": "47511c14992c1404cef1d950c67a66bed1a5c7f3",
+  "reviewedHead": "c915c694d9807ef334faece556d02e4b8fdedd54",
+  "independence": "Three fresh contexts; inherited session model, exact identifier unavailable; no model diversity claimed.",
+  "reviewers": [
+    {
+      "agent": "/root/review_scopes",
+      "scope": "Credentials, authorization, client custody, work.lease",
+      "initialFinding": "P2 historical claim replay overwrites newer custody",
+      "repairFinding": "P2 pre-upgrade release retry cannot reach existing receipt",
+      "finalVerdict": "No blocking findings remain",
+      "evidence": "Committed source trace; five pure permission assertions and four in-memory client checks reported by reviewer; inspected root integration log; did not rerun PostgreSQL integration.",
+      "endpointDecision": "Same-URL custody limitation accepted for documented recovery; different URL requires fresh claims and keys."
+    },
+    {
+      "agent": "/root/review_migrations",
+      "scope": "Module installation, enabled dependencies, migration serialization",
+      "initialFinding": "P2 installation enables dependent of disabled module",
+      "finalVerdict": "No remaining blockers in migration correction",
+      "evidence": "Committed source, unchanged baseline SQL, concurrent test assertions and authorized root execution log inspected; did not execute PostgreSQL."
+    },
+    {
+      "agent": "/root/review_restore",
+      "scope": "Backup, restore quarantine, uncertainty, recovery documentation",
+      "initialFinding": "P2 lost PostgreSQL responses can produce false quarantine report",
+      "finalVerdict": "No blocking findings in final recovery scope",
+      "evidence": "Committed source and fault helper/assertions plus root integration log inspected; real denied connection/session termination assertions covered; did not execute PostgreSQL."
+    }
+  ]
+}

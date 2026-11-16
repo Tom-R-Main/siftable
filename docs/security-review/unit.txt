@@ -1,0 +1,26 @@
+
+> siftable-headless@0.1.0 test
+> npm run build && node --test tests/*.test.mjs
+
+
+> siftable-headless@0.1.0 build
+> tsc -b && node scripts/copy-modules.mjs
+
+✔ config.info exposes only identity metadata and respects protected-file checks (189.538042ms)
+✔ claim help discloses caller fields, optional defaults and bounds without credentials (95.155084ms)
+✔ artifact help describes complete public input and automatic lease custody (82.394291ms)
+✔ all registry operations expose input schemas without lease internals (5188.093791ms)
+✔ nested defaults are optional input and enums remain discoverable (163.711875ms)
+✔ help skips payload and credential access, and global help points to operation help (235.867834ms)
+✔ unknown operation help fails clearly before reading any credential (97.915334ms)
+✔ extracted verification oracle keeps absent/failed evidence distinct from passed (1.362ms)
+✔ extracted secret detector returns metadata without detected contents (1.5905ms)
+✔ evidence with identical millisecond timestamps uses server sequence order (0.093ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5955.157292
