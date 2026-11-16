@@ -24,6 +24,12 @@ const page = {
   limit: z.number().int().min(1).max(100).default(30),
   offset: z.number().int().min(0).max(100_000).default(0),
 };
+const revision = z.number().int().positive();
+const readId = z.object({ id, includeDeleted: z.boolean().default(false) }).strict();
+const remove = z.object({ id, revision, reason: title }).strict();
+const dependency = z
+  .object({ id, gate: z.enum(['done', 'commands_passed']).default('done') })
+  .strict();
 const lease = { id, claimSecret: z.string().min(32).max(256), epoch: z.number().int().positive() };
 const op = <S extends z.ZodType>(
   module: ModuleId,
@@ -46,8 +52,13 @@ export const operations = {
     false,
     z.object({ title, instructions: text.default('') }).strict(),
   ),
-  'projects.get': op('projects', false, false, z.object({ id }).strict()),
-  'projects.list': op('projects', false, false, z.object(page).strict()),
+  'projects.get': op('projects', false, false, readId),
+  'projects.list': op(
+    'projects',
+    false,
+    false,
+    z.object({ ...page, includeDeleted: z.boolean().default(false) }).strict(),
+  ),
   'notes.create': op(
     'context',
     true,
@@ -61,12 +72,20 @@ export const operations = {
       })
       .strict(),
   ),
-  'notes.get': op('context', false, false, z.object({ id }).strict()),
+  'notes.get': op('context', false, false, readId),
   'notes.update': op(
     'context',
     true,
     false,
-    z.object({ id, revision: z.number().int().positive(), body: text }).strict(),
+    z
+      .object({
+        id,
+        revision,
+        body: text,
+        title: title.optional(),
+        source: z.string().max(2000).nullable().optional(),
+      })
+      .strict(),
   ),
   'notes.search': op(
     'context',
@@ -85,14 +104,55 @@ export const operations = {
       })
       .strict(),
   ),
-  'context.packet.get': op('context', false, false, z.object({ id }).strict()),
+  'context.packet.get': op('context', false, false, readId),
   'tasks.create': op(
     'planning',
     true,
     false,
     z.object({ title, projectId: id, acceptance: text.default('') }).strict(),
   ),
-  'tasks.get': op('planning', false, false, z.object({ id }).strict()),
+  'tasks.get': op('planning', false, false, readId),
+  'projects.update': op(
+    'projects',
+    true,
+    false,
+    z.object({ id, revision, title, instructions: text }).strict(),
+  ),
+  'projects.delete': op('projects', true, true, remove),
+  'projects.restore': op('projects', true, true, remove),
+  'notes.list': op(
+    'context',
+    false,
+    false,
+    z.object({ ...page, includeDeleted: z.boolean().default(false) }).strict(),
+  ),
+  'notes.delete': op('context', true, true, remove),
+  'notes.restore': op('context', true, true, remove),
+  'notes.history': op('context', false, false, z.object({ id, ...page }).strict()),
+  'tasks.list': op(
+    'planning',
+    false,
+    false,
+    z
+      .object({ ...page, projectId: id.optional(), includeDeleted: z.boolean().default(false) })
+      .strict(),
+  ),
+  'tasks.update': op(
+    'planning',
+    true,
+    false,
+    z
+      .object({
+        id,
+        revision,
+        title,
+        acceptance: text,
+        status: z.enum(['open', 'in_progress', 'done', 'cancelled']),
+      })
+      .strict(),
+  ),
+  'tasks.delete': op('planning', true, true, remove),
+  'tasks.restore': op('planning', true, true, remove),
   'work.create': op(
     'work',
     true,
@@ -114,8 +174,13 @@ export const operations = {
       })
       .strict(),
   ),
-  'work.get': op('work', false, false, z.object({ id }).strict()),
-  'work.list': op('work', false, false, z.object(page).strict()),
+  'work.get': op('work', false, false, readId),
+  'work.list': op(
+    'work',
+    false,
+    false,
+    z.object({ ...page, includeDeleted: z.boolean().default(false) }).strict(),
+  ),
   'work.claim': op(
     'work',
     true,
@@ -161,6 +226,38 @@ export const operations = {
       })
       .strict(),
   ),
+  'work.update': op(
+    'work',
+    true,
+    true,
+    z.object({ id, revision, title, description: text, reason: title }).strict(),
+  ),
+  'work.delete': op('work', true, true, remove),
+  'work.restore': op('work', true, true, remove),
+  'work.block': op('work', true, false, z.object({ ...lease, reason: title }).strict()),
+  'work.fail': op('work', true, false, z.object({ ...lease, reason: title }).strict()),
+  'work.requeue': op('work', true, true, z.object({ id, reason: title }).strict()),
+  'work.dependencies.set': op(
+    'work',
+    true,
+    true,
+    z.object({ id, revision, dependencies: z.array(dependency).max(100), reason: title }).strict(),
+  ),
+  'work.artifacts.add': op(
+    'work',
+    true,
+    false,
+    z
+      .object({
+        ...lease,
+        name: title,
+        mediaType: z.string().min(1).max(120),
+        content: z.string().max(64000),
+      })
+      .strict(),
+  ),
+  'work.artifacts.list': op('work', false, false, z.object({ id, ...page }).strict()),
+  'work.artifacts.get': op('work', false, false, z.object({ id, artifactId: id }).strict()),
   'extensions.define': op(
     'extensions',
     true,
@@ -185,8 +282,29 @@ export const operations = {
       })
       .strict(),
   ),
-  'objects.get': op('extensions', false, false, z.object({ id }).strict()),
-  'objects.list': op('extensions', false, false, z.object({ type: key, ...page }).strict()),
+  'objects.get': op('extensions', false, false, readId),
+  'objects.list': op(
+    'extensions',
+    false,
+    false,
+    z.object({ type: key, ...page, includeDeleted: z.boolean().default(false) }).strict(),
+  ),
+  'objects.update': op(
+    'extensions',
+    true,
+    false,
+    z.object({ id, revision, version: revision, data: z.record(z.string(), z.unknown()) }).strict(),
+  ),
+  'objects.delete': op('extensions', true, true, remove),
+  'objects.restore': op('extensions', true, true, remove),
+  'relations.get': op('extensions', false, false, z.object({ id }).strict()),
+  'relations.delete': op('extensions', true, false, z.object({ id }).strict()),
+  'relations.update': op(
+    'extensions',
+    true,
+    false,
+    z.object({ id, type: key, source: ref, target: ref }).strict(),
+  ),
   'relations.define': op(
     'extensions',
     true,

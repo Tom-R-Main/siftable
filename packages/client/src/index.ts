@@ -124,9 +124,16 @@ export class SiftClient {
       return result;
     }
     if (
-      ['work.start', 'work.heartbeat', 'work.release', 'work.review', 'work.evidence'].includes(
-        name,
-      )
+      [
+        'work.start',
+        'work.heartbeat',
+        'work.release',
+        'work.review',
+        'work.evidence',
+        'work.block',
+        'work.fail',
+        'work.artifacts.add',
+      ].includes(name)
     ) {
       let lease: Lease;
       try {

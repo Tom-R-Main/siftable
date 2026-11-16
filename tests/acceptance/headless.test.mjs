@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { randomUUID, randomBytes } from 'node:crypto';
-import { mkdir, readFile, writeFile, stat } from 'node:fs/promises';
+import { randomUUID, randomBytes, createHash } from 'node:crypto';
+import { mkdir, readFile, writeFile, stat, cp, appendFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { once } from 'node:events';
 import { Pool } from 'pg';
@@ -73,7 +73,7 @@ async function stop(f) {
     await ended;
   }
 }
-async function fixture(label, modules) {
+async function fixture(label, modules, legacy = false) {
   const db = `sift_${label}_${runId}`;
   const admin = new Pool({ connectionString: adminBase });
   await admin.query(`CREATE DATABASE "${db}"`);
@@ -95,6 +95,38 @@ async function fixture(label, modules) {
     credentials: [],
   };
   fixtures.push(f);
+  if (legacy) {
+    const pool = new Pool({ connectionString: adminUrl });
+    try {
+      for (const mod of ['foundation', ...modules]) {
+        const sql = await readFile(resolve(root, `modules/${mod}/001.sql`), 'utf8');
+        const checksum = createHash('sha256').update(sql).digest('hex');
+        if (mod !== 'foundation')
+          await pool.query('INSERT INTO foundation.modules(id,version,checksum) VALUES($1,1,$2)', [
+            mod,
+            checksum,
+          ]);
+        await pool.query(sql);
+        if (mod === 'foundation')
+          await pool.query('INSERT INTO foundation.modules(id,version,checksum) VALUES($1,1,$2)', [
+            mod,
+            checksum,
+          ]);
+      }
+      f.legacyProject = randomUUID();
+      const owner = randomUUID();
+      await pool.query(
+        "INSERT INTO foundation.entities(id,owner_id,type) VALUES($1,$2,'projects.project')",
+        [f.legacyProject, owner],
+      );
+      await pool.query(
+        "INSERT INTO projects.projects(id,owner_id,title,instructions) VALUES($1,$2,'Preserved version one project','Do not rewrite history')",
+        [f.legacyProject, owner],
+      );
+    } finally {
+      await pool.end();
+    }
+  }
   f.identity = await cli(
     ['init', '--modules', modules.join(','), '--output', f.ownerPath],
     adminUrl,
@@ -186,6 +218,71 @@ test('standalone headless acceptance on real PostgreSQL and subprocess clients',
           }
           await db.end();
           await stop(f);
+        }
+      },
+    );
+    await t.test(
+      'version one data upgrades in place and migration drift fails closed',
+      async () => {
+        const legacy = await fixture(
+          'legacy',
+          ['projects', 'context', 'work', 'planning', 'extensions'],
+          true,
+        );
+        const pool = new Pool({ connectionString: legacy.adminUrl });
+        try {
+          assert.equal(
+            (
+              await pool.query('SELECT revision FROM projects.projects WHERE id=$1', [
+                legacy.legacyProject,
+              ])
+            ).rows[0].revision,
+            1,
+          );
+          assert.equal(
+            (await pool.query('SELECT count(*)::int AS n FROM foundation.migrations')).rows[0].n,
+            12,
+          );
+          assert.ok((await callCli(legacy, 'modules.list', {})).every((m) => m.version === 2));
+          await cli(['install', '--modules', 'context'], legacy.adminUrl);
+          const checksum = (
+            await pool.query(
+              "SELECT checksum FROM foundation.migrations WHERE module='work' AND version=1",
+            )
+          ).rows[0].checksum;
+          await pool.query(
+            "UPDATE foundation.migrations SET checksum='drift' WHERE module='work' AND version=1",
+          );
+          await assert.rejects(() => cli(['install', '--modules', 'work'], legacy.adminUrl));
+          await pool.query(
+            "UPDATE foundation.migrations SET checksum=$1 WHERE module='work' AND version=1",
+            [checksum],
+          );
+          const currentChecksum = (
+            await pool.query("SELECT checksum FROM foundation.modules WHERE id='work'")
+          ).rows[0].checksum;
+          await pool.query("UPDATE foundation.modules SET checksum='drift' WHERE id='work'");
+          await assert.rejects(() => cli(['install', '--modules', 'work'], legacy.adminUrl));
+          await pool.query("UPDATE foundation.modules SET checksum=$1 WHERE id='work'", [
+            currentChecksum,
+          ]);
+          await pool.query("DELETE FROM foundation.migrations WHERE module='work' AND version=1");
+          await assert.rejects(() => cli(['install', '--modules', 'work'], legacy.adminUrl));
+          await pool.query(
+            "INSERT INTO foundation.migrations(module,version,checksum) VALUES('work',1,$1)",
+            [checksum],
+          );
+          assert.equal(
+            (
+              await pool.query('SELECT title FROM projects.projects WHERE id=$1', [
+                legacy.legacyProject,
+              ])
+            ).rows[0].title,
+            'Preserved version one project',
+          );
+        } finally {
+          await pool.end();
+          await stop(legacy);
         }
       },
     );
@@ -628,6 +725,535 @@ test('standalone headless acceptance on real PostgreSQL and subprocess clients',
         await stop(separate);
       },
     );
+    await t.test(
+      'CRUD revisions, deletion, restore and custom relationship editing work through CLI',
+      async () => {
+        const p = await callCli(f, 'projects.create', { title: 'CRUD project' });
+        const pu = await callCli(f, 'projects.update', {
+          id: p.id,
+          revision: 1,
+          title: 'Revised project',
+          instructions: 'Keep history',
+        });
+        assert.equal(pu.revision, 2);
+        await reject(
+          () =>
+            invoke(f.owner, 'projects.update', {
+              id: p.id,
+              revision: 1,
+              title: 'Stale overwrite',
+              instructions: '',
+            }),
+          'revision_conflict',
+        );
+        const n = await callCli(f, 'notes.create', {
+          title: 'Disposable note',
+          body: 'Searchable tombstone content',
+          projectId: p.id,
+        });
+        const nu = await callCli(f, 'notes.update', {
+          id: n.id,
+          revision: 1,
+          title: 'Updated note',
+          source: 'fixture://updated',
+          body: 'Searchable replacement',
+        });
+        assert.equal(nu.title, 'Updated note');
+        assert.equal((await callCli(f, 'notes.history', { id: n.id })).length, 2);
+        const task = await callCli(f, 'tasks.create', { title: 'Human plan', projectId: p.id });
+        const tu = await callCli(f, 'tasks.update', {
+          id: task.id,
+          revision: 1,
+          title: 'Human plan completed',
+          acceptance: 'Observed locally',
+          status: 'done',
+        });
+        assert.equal(tu.status, 'done');
+        assert.equal((await callCli(f, 'tasks.list', { projectId: p.id }))[0].id, task.id);
+        await reject(
+          () =>
+            invoke(f.owner, 'projects.delete', {
+              id: p.id,
+              revision: 2,
+              reason: 'Test references',
+            }),
+          'referenced_record',
+        );
+        for (const [type, id, revision] of [
+          ['notes', n.id, 2],
+          ['tasks', task.id, 2],
+        ]) {
+          await callCli(f, `${type}.delete`, { id, revision, reason: 'Synthetic cleanup' });
+          await reject(() => invoke(f.owner, `${type}.get`, { id }), 'not_found');
+          assert.ok((await callCli(f, `${type}.get`, { id, includeDeleted: true })).deleted_at);
+          assert.ok(!(await callCli(f, `${type}.list`, {})).some((r) => r.id === id));
+        }
+        assert.ok(
+          !(await callCli(f, 'notes.search', { query: 'replacement' })).some((r) => r.id === n.id),
+        );
+        await callCli(f, 'projects.delete', {
+          id: p.id,
+          revision: 2,
+          reason: 'No active dependents',
+        });
+        await reject(
+          () =>
+            invoke(f.owner, 'tasks.restore', {
+              id: task.id,
+              revision: 3,
+              reason: 'Missing parent',
+            }),
+          'not_found',
+        );
+        await callCli(f, 'projects.restore', { id: p.id, revision: 3, reason: 'Recover project' });
+        await callCli(f, 'tasks.restore', { id: task.id, revision: 3, reason: 'Recover task' });
+        await callCli(f, 'notes.restore', { id: n.id, revision: 3, reason: 'Recover note' });
+        assert.equal((await callCli(f, 'notes.history', { id: n.id })).length, 4);
+        const obj = await callCli(f, 'objects.create', {
+          type: 'research.paper',
+          version: 1,
+          data: { title: 'Editable object' },
+        });
+        const ou = await callCli(f, 'objects.update', {
+          id: obj.id,
+          revision: 1,
+          version: 2,
+          data: { title: 'Updated object', url: 'fixture://paper' },
+        });
+        assert.equal(ou.revision, 2);
+        await reject(
+          () =>
+            invoke(f.owner, 'objects.update', {
+              id: obj.id,
+              revision: 2,
+              version: 2,
+              data: { title: 12 },
+            }),
+          'invalid_record',
+        );
+        const rel = await callCli(f, 'relations.create', {
+          type: 'research.supports',
+          source: { id: obj.id, type: 'research.paper' },
+          target: { id: p.id, type: 'projects.project' },
+        });
+        await callCli(f, 'relations.update', {
+          id: rel.id,
+          type: 'research.supports',
+          source: { id: obj.id, type: 'research.paper' },
+          target: { id: project.id, type: 'projects.project' },
+        });
+        assert.equal((await callCli(f, 'relations.get', { id: rel.id })).target_id, project.id);
+        await callCli(f, 'relations.delete', { id: rel.id });
+        await reject(() => invoke(f.owner, 'relations.get', { id: rel.id }), 'not_found');
+        await callCli(f, 'objects.delete', {
+          id: obj.id,
+          revision: 2,
+          reason: 'Hide custom record',
+        });
+        await reject(() => invoke(f.owner, 'objects.get', { id: obj.id }), 'not_found');
+        await callCli(f, 'objects.restore', {
+          id: obj.id,
+          revision: 3,
+          reason: 'Recover custom record',
+        });
+        assert.equal((await callCli(f, 'objects.get', { id: obj.id })).revision, 4);
+        const other = await agent(
+          f,
+          'crud_scope',
+          ['projects:write', 'planning:write', 'context:write', 'extensions:write'],
+          { scopeId: randomUUID() },
+        );
+        await reject(
+          () =>
+            invoke(other.client, 'projects.update', {
+              id: p.id,
+              revision: 4,
+              title: 'Cross scope',
+              instructions: '',
+            }),
+          'not_found',
+        );
+        await reject(
+          () =>
+            invoke(a.client, 'notes.delete', { id: n.id, revision: 4, reason: 'Worker delete' }),
+          'forbidden',
+        );
+      },
+    );
+    await t.test(
+      'work editing, cycle controls, blocked and failed retries, artifacts and terminal protection',
+      async () => {
+        let w = await createWork(f.owner),
+          predecessor = await createWork(f.owner);
+        w = await callCli(f, 'work.update', {
+          id: w.id,
+          revision: w.revision,
+          title: 'Edited executable work',
+          description: 'Bounded retry',
+          reason: 'Clarify intent',
+        });
+        w = await callCli(f, 'work.dependencies.set', {
+          id: w.id,
+          revision: w.revision,
+          dependencies: [{ id: predecessor.id }],
+          reason: 'Require predecessor',
+        });
+        await reject(
+          () =>
+            invoke(f.owner, 'work.dependencies.set', {
+              id: predecessor.id,
+              revision: 1,
+              dependencies: [{ id: w.id }],
+              reason: 'Cycle probe',
+            }),
+          'dependency_cycle',
+        );
+        await reject(() => invoke(a.client, 'work.claim', { id: w.id }), 'not_claimable');
+        w = await callCli(f, 'work.dependencies.set', {
+          id: w.id,
+          revision: w.revision,
+          dependencies: [],
+          reason: 'Independent task',
+        });
+        const editedPlan = w.plan_version;
+        await callCli(f, 'work.claim', { id: w.id }, 'lifecycle-claim-1', a.path);
+        await callCli(f, 'work.start', { id: w.id }, 'lifecycle-start-1', a.path);
+        await callCli(
+          f,
+          'work.heartbeat',
+          { id: w.id, leaseSeconds: 30 },
+          'lifecycle-heartbeat',
+          a.path,
+        );
+        w = await callCli(
+          f,
+          'work.block',
+          { id: w.id, reason: 'Missing input' },
+          'lifecycle-block',
+          a.path,
+        );
+        assert.equal(w.status, 'blocked');
+        assert.equal(w.claimable, false);
+        await reject(() => invoke(a.client, 'work.start', { id: w.id }), 'stale_lease');
+        w = await callCli(f, 'work.requeue', { id: w.id, reason: 'Input supplied' });
+        assert.equal(w.plan_version, editedPlan + 1);
+        await callCli(f, 'work.claim', { id: w.id }, 'lifecycle-claim-2', a.path);
+        w = await callCli(
+          f,
+          'work.fail',
+          { id: w.id, reason: 'Execution failed' },
+          'lifecycle-fail',
+          a.path,
+        );
+        assert.equal(w.status, 'failed');
+        w = await callCli(f, 'work.requeue', { id: w.id, reason: 'Try corrected approach' });
+        assert.equal(w.plan_version, editedPlan + 2);
+        const transport = new StdioClientTransport({
+          command: process.execPath,
+          args: [resolve(artifacts, 'packages/mcp/dist/index.js')],
+          cwd: root,
+          env: { PATH: process.env.PATH, SIFT_CONFIG: b.path, SIFT_TOOLS: 'work' },
+          stderr: 'pipe',
+        });
+        const mcp = new Client({ name: 'lifecycle-worker', version: '1.0.0' });
+        await mcp.connect(transport);
+        try {
+          const tools = (await mcp.listTools()).tools;
+          assert.ok(tools.some((t) => t.name === 'work_fail'));
+          assert.ok(!tools.some((t) => t.name === 'work_requeue'));
+          for (const [name, args] of [
+            ['work_claim', { id: w.id }],
+            ['work_start', { id: w.id }],
+            [
+              'work_artifacts_add',
+              {
+                id: w.id,
+                name: 'Result',
+                mediaType: 'text/plain',
+                content: 'Synthetic stored output',
+              },
+            ],
+            [
+              'work_evidence',
+              {
+                id: w.id,
+                planVersion: w.plan_version,
+                stepId: w.plan.steps[0].id,
+                attemptId: 'cycle3',
+                outcome: 'passed',
+                output: 'Observed stored artifact',
+                provenance: 'fixture://artifact',
+              },
+            ],
+            ['work_review', { id: w.id, summary: 'Ready' }],
+          ]) {
+            parseTool(
+              await mcp.callTool({ name, arguments: { ...args, requestKey: randomUUID() } }),
+            );
+          }
+        } finally {
+          await mcp.close();
+        }
+        const artifactsList = await callCli(f, 'work.artifacts.list', { id: w.id });
+        assert.equal(artifactsList.length, 1);
+        const artifact = await callCli(f, 'work.artifacts.get', {
+          id: w.id,
+          artifactId: artifactsList[0].id,
+        });
+        assert.equal(artifact.content, 'Synthetic stored output');
+        assert.equal(artifact.digest, createHash('sha256').update(artifact.content).digest('hex'));
+        // A rejected review starts fresh verification, preserving previous evidence/artifacts.
+        w = await callCli(f, 'work.requeue', {
+          id: w.id,
+          reason: 'Operator requests another attempt',
+        });
+        assert.equal(w.coverage.state, 'unverified');
+        assert.equal(w.plan_version, editedPlan + 3);
+        await callCli(f, 'work.claim', { id: w.id }, 'lifecycle-final-claim', a.path);
+        await callCli(
+          f,
+          'work.evidence',
+          {
+            id: w.id,
+            planVersion: w.plan_version,
+            stepId: w.plan.steps[0].id,
+            attemptId: 'final',
+            outcome: 'passed',
+            output: 'Retested',
+            provenance: 'fixture://retry',
+          },
+          'lifecycle-final-evidence',
+          a.path,
+        );
+        await callCli(
+          f,
+          'work.review',
+          { id: w.id, summary: 'Retested' },
+          'lifecycle-final-review',
+          a.path,
+        );
+        w = await callCli(f, 'work.accept', { id: w.id, summary: 'Accepted after retry' });
+        for (const [name, args] of [
+          ['work.requeue', { id: w.id, reason: 'Reopen accepted' }],
+          [
+            'work.plan.revise',
+            {
+              id: w.id,
+              steps: [{ key: 'bad', title: 'Change accepted plan' }],
+              reason: 'Terminal probe',
+            },
+          ],
+        ])
+          await reject(
+            () => invoke(f.owner, name, args),
+            name.endsWith('requeue') ? 'invalid_transition' : 'terminal',
+          );
+        const deleted = await callCli(f, 'work.delete', {
+          id: w.id,
+          revision: w.revision,
+          reason: 'Archive completed work',
+        });
+        await reject(() => invoke(f.owner, 'work.get', { id: w.id }), 'not_found');
+        assert.equal(
+          (await callCli(f, 'work.get', { id: w.id, includeDeleted: true })).evidence.length,
+          2,
+        );
+        await callCli(f, 'work.restore', {
+          id: w.id,
+          revision: deleted.revision,
+          reason: 'Restore inspection',
+        });
+        assert.equal((await callCli(f, 'work.get', { id: w.id })).status, 'done');
+      },
+    );
+    await t.test(
+      'native backup restores exact records, schemas and receipts; corruption and overwrite are refused',
+      async () => {
+        const active = await createWork(f.owner);
+        await invoke(a.client, 'work.claim', { id: active.id });
+        const before = await callCli(f, 'work.get', { id: work.id });
+        const backup = resolve(base, 'combined-backup');
+        const receipt = await cli(['backup', '--output', backup], f.adminUrl);
+        assert.ok(receipt.rows > 0);
+        assert.ok((await cli(['backup-verify', '--file', backup])).verified);
+        assert.equal((await stat(resolve(backup, 'database.dump'))).mode & 0o077, 0);
+        const tampered = resolve(base, 'tampered-backup');
+        await cp(backup, tampered, { recursive: true });
+        await appendFile(resolve(tampered, 'database.dump'), 'corrupt');
+        await assert.rejects(
+          () => cli(['backup-verify', '--file', tampered]),
+          (e) => /checksum mismatch/.test(e.stderr),
+        );
+        const db = `sift_restore_${runId}`;
+        await assert.rejects(() =>
+          cli(['restore', '--file', tampered, '--database', db], adminBase),
+        );
+        const restored = await cli(['restore', '--file', backup, '--database', db], adminBase);
+        assert.equal(restored.integrity, 'verified');
+        assert.ok(restored.invalidatedLeases >= 1);
+        const target = new URL(adminBase);
+        target.pathname = '/' + db;
+        const adminUrl = target.href;
+        target.username = 'sift_runtime';
+        target.password = '';
+        const dir = resolve(base, 'restored');
+        await mkdir(dir, { mode: 0o700 });
+        const ownerPath = resolve(dir, 'owner.json');
+        await cp(f.ownerPath, ownerPath);
+        const recovered = {
+          db,
+          dir,
+          adminUrl,
+          runtimeUrl: target.href,
+          ownerPath,
+          credentials: [ownerPath],
+          identity: f.identity,
+        };
+        fixtures.push(recovered);
+        await start(recovered);
+        const after = await callCli(recovered, 'work.get', { id: work.id });
+        assert.deepEqual(after, before);
+        const originalCreate = {
+          title: 'Headless handoff',
+          projectId: project.id,
+          taskId: work.links.find((l) => l.relation === 'implements').target_id,
+          contextIds: [note.id],
+          steps: [{ key: 'journey', title: 'Observe the handoff', required: true }],
+        };
+        assert.equal(
+          (await callCli(recovered, 'work.create', originalCreate, 'create-handoff')).id,
+          work.id,
+        );
+        const replayActive = await callCli(recovered, 'work.get', { id: active.id });
+        assert.equal(replayActive.status, 'queued');
+        assert.equal(replayActive.epoch, 2);
+        assert.ok(replayActive.history.some((e) => e.event === 'restore.lease_invalidated'));
+        assert.ok(
+          (await callCli(recovered, 'schema.inspect', {})).extensions.some(
+            (x) => x.type === 'research.paper' && x.version === 2,
+          ),
+        );
+        assert.ok(
+          (await callCli(recovered, 'objects.list', { type: 'research.paper' })).length >= 2,
+        );
+        assert.equal((await callCli(recovered, 'notes.get', { id: note.id })).revision, 2);
+        await callCli(recovered, 'notes.create', {
+          title: 'After recovery',
+          body: 'Proves sequence and grants continue',
+        });
+        await assert.rejects(
+          () => cli(['restore', '--file', backup, '--database', db], adminBase),
+          (e) => /existing database/.test(e.stderr),
+        );
+        const pool = new Pool({ connectionString: recovered.runtimeUrl });
+        assert.equal((await pool.query('SELECT count(*)::int AS n FROM work.items')).rows[0].n, 0);
+        await assert.rejects(
+          () => pool.query('SELECT * FROM foundation.principals'),
+          (e) => e.code === '42501',
+        );
+        await pool.end();
+        await stop(recovered);
+      },
+    );
+    await t.test(
+      'context-only backup preserves disabled modules and rejects a mismatched data manifest',
+      async () => {
+        const source = fixtures.find((x) => x.db.startsWith('sift_context_'));
+        await start(source);
+        await callCli(source, 'modules.set', { module: 'context', enabled: false });
+        await stop(source);
+        const backup = resolve(base, 'context-backup');
+        const receipt = await cli(['backup', '--output', backup], source.adminUrl);
+        assert.deepEqual(receipt.modules, ['context', 'foundation']);
+        const db = `sift_minrestore_${runId}`;
+        await cli(['restore', '--file', backup, '--database', db], adminBase);
+        const target = new URL(adminBase);
+        target.pathname = '/' + db;
+        const adminUrl = target.href;
+        target.username = 'sift_runtime';
+        target.password = '';
+        const dir = resolve(base, 'minrestore');
+        await mkdir(dir, { mode: 0o700 });
+        const ownerPath = resolve(dir, 'owner.json');
+        await cp(source.ownerPath, ownerPath);
+        const recovered = {
+          db,
+          dir,
+          adminUrl,
+          runtimeUrl: target.href,
+          ownerPath,
+          credentials: [ownerPath],
+          identity: source.identity,
+        };
+        fixtures.push(recovered);
+        await start(recovered);
+        assert.ok(!(await recovered.owner.catalog()).some((x) => x.module === 'context'));
+        await reject(() => invoke(recovered.owner, 'notes.list', {}), 'module_unavailable');
+        await callCli(recovered, 'modules.set', { module: 'context', enabled: true });
+        assert.equal((await callCli(recovered, 'notes.list', {})).length, 1);
+        const pool = new Pool({ connectionString: adminUrl });
+        assert.equal(
+          (await pool.query("SELECT to_regnamespace('work') AS name")).rows[0].name,
+          null,
+        );
+        await pool.end();
+        await stop(recovered);
+        const bad = resolve(base, 'bad-manifest');
+        await cp(backup, bad, { recursive: true });
+        const manifestPath = resolve(bad, 'manifest.json');
+        const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+        manifest.tables[0].sha256 = '0'.repeat(64);
+        await writeFile(manifestPath, JSON.stringify(manifest), { mode: 0o600 });
+        const failedDb = `sift_failedrestore_${runId}`;
+        // Only this newly created test database may be cleaned up by the fixture owner.
+        fixtures.push({ db: failedDb });
+        await assert.rejects(
+          () => cli(['restore', '--file', bad, '--database', failedDb], adminBase),
+          (e) => /Recovery did not complete/.test(e.stderr),
+        );
+        const admin = new Pool({ connectionString: adminBase });
+        assert.equal(
+          (
+            await admin.query(
+              "SELECT has_database_privilege('sift_runtime',$1,'CONNECT') AS allowed",
+              [failedDb],
+            )
+          ).rows[0].allowed,
+          false,
+        );
+        await admin.end();
+      },
+    );
+    await t.test('editing previously verified released work invalidates old evidence', async () => {
+      let w = await createWork(f.owner);
+      await invoke(a.client, 'work.claim', { id: w.id });
+      await invoke(a.client, 'work.evidence', {
+        id: w.id,
+        planVersion: w.plan_version,
+        stepId: w.plan.steps[0].id,
+        attemptId: 'before-edit',
+        outcome: 'passed',
+        output: 'Old requirement passed',
+        provenance: 'fixture://edit',
+      });
+      w = await invoke(a.client, 'work.release', { id: w.id });
+      assert.equal(w.coverage.state, 'commands_passed');
+      w = await callCli(f, 'work.update', {
+        id: w.id,
+        revision: w.revision,
+        title: 'Changed requirement',
+        description: 'Different intended outcome',
+        reason: 'Explicit scope change',
+      });
+      assert.equal(w.coverage.state, 'unverified');
+      assert.equal(w.plan_version, 2);
+      await invoke(a.client, 'work.claim', { id: w.id });
+      await invoke(a.client, 'work.review', { id: w.id, summary: 'No new evidence' });
+      await reject(
+        () => invoke(f.owner, 'work.accept', { id: w.id, summary: 'Try old evidence' }),
+        'evidence_incomplete',
+      );
+    });
     await t.test('restart preserves accepted work and idempotency receipts', async () => {
       await stop(f);
       await start(f);

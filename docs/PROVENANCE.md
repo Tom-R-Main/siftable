@@ -14,14 +14,16 @@ The work lifecycle, evidence ledger, scope isolation, repository proposal and sc
 
 Intentional differences in this milestone:
 
-- Fresh module-owned PostgreSQL schemas and a new baseline. No old migration chain or production data import.
-- Foundation entities/links bridge optional modules without table references into absent domains. A global module-reference ledger conservatively blocks disablement, including references created under another scope. No reference-removal operation yet.
+- Fresh module-owned PostgreSQL schemas, an unchanged version-1 baseline and additive version-2 migrations. No old hosted migration chain or production data import.
+- Foundation entities/links bridge optional modules without table references into absent domains. A global module-reference ledger conservatively blocks disablement, including references created under another scope. Custom edges can be removed; the global module dependency ledger and immutable declarations remain conservative and are not garbage-collected.
 - Immutable versioned verification steps are JSON within a plan, enforced by a PostgreSQL trigger for evidence membership, instead of the old normalized step table. Plans and evidence remain append-only.
-- Work dependencies are fixed at creation. Existing predecessors only makes dependency cycles unconstructable through the supported API. Scope-level advisory serialization is deliberately simple and has not been throughput-qualified.
+- Work dependencies can be edited on queued/blocked items, with revision checks and a recursive cycle check. Dependency and intent edits start fresh verification coverage. Scope-level advisory serialization is deliberately simple and has not been throughput-qualified.
 - Scoped agent credentials plus a distinct owner operator; the owner can accept only reviewed work with passing evidence. No browser approval or managed execution request adapter.
 - Context packet limits are measured in characters, explicitly labeled. Immutable source revisions/digests and current-source freshness are exposed. Token estimation, automatic retrieval planning and source ingestion remain later work.
 - Local lexical search does not import or call embedding providers.
 - Extensions support a deliberately bounded declarative JSON Schema subset and additive optional-field upgrades. They do not execute SQL or arbitrary code.
+- Reversible deletion hides records without erasing immutable evidence, artifacts, packets, receipts or history. Terminal accepted work cannot be silently reopened or have its accepted plan revised.
+- Native PostgreSQL backup/restore and per-table content verification are new extraction code. Recovery preserves stable identities and invalidates active leases before serving.
 - HTTP operations use `/v1/operations/<name>` and share the registry with CLI/MCP. No compatibility claim for all legacy REST paths or published clients.
 
 The copied plan and inventory describe the larger intended extraction. `WORK.md` is the authority for what this implementation actually reached. Source hashes for the direct extractions are recorded in `extracted-sources.json`.

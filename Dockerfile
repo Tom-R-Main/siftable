@@ -7,6 +7,7 @@ COPY modules ./modules
 COPY scripts/copy-modules.mjs ./scripts/copy-modules.mjs
 RUN npm ci --ignore-scripts && npm run build && npm prune --omit=dev --ignore-scripts
 FROM node:22.23.3-alpine
+RUN apk add --no-cache postgresql17-client
 WORKDIR /app
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/package.json ./package.json

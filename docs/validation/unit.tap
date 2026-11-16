@@ -1,11 +1,28 @@
-✔ extracted verification oracle keeps absent/failed evidence distinct from passed (1.152833ms)
-✔ extracted secret detector returns metadata without detected contents (1.212292ms)
-✔ evidence with identical millisecond timestamps uses server sequence order (0.0835ms)
-ℹ tests 3
-ℹ suites 0
-ℹ pass 3
-ℹ fail 0
-ℹ cancelled 0
-ℹ skipped 0
-ℹ todo 0
-ℹ duration_ms 213.3095
+TAP version 13
+# Subtest: extracted verification oracle keeps absent/failed evidence distinct from passed
+ok 1 - extracted verification oracle keeps absent/failed evidence distinct from passed
+  ---
+  duration_ms: 3.958125
+  type: 'test'
+  ...
+# Subtest: extracted secret detector returns metadata without detected contents
+ok 2 - extracted secret detector returns metadata without detected contents
+  ---
+  duration_ms: 1.166875
+  type: 'test'
+  ...
+# Subtest: evidence with identical millisecond timestamps uses server sequence order
+ok 3 - evidence with identical millisecond timestamps uses server sequence order
+  ---
+  duration_ms: 0.07275
+  type: 'test'
+  ...
+1..3
+# tests 3
+# suites 0
+# pass 3
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 153.724709

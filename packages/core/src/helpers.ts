@@ -21,7 +21,7 @@ export async function entity(c: PoolClient, p: Principal, type: string): Promise
 }
 export async function reference(c: PoolClient, id: string, type?: string): Promise<void> {
   const r = await c.query(
-    'SELECT e.type,t.module FROM foundation.entities e JOIN foundation.entity_types t ON t.type=e.type WHERE e.id=$1',
+    'SELECT e.type,t.module FROM foundation.entities e JOIN foundation.entity_types t ON t.type=e.type WHERE e.id=$1 AND e.deleted_at IS NULL',
     [id],
   );
   if (!r.rows[0] || (type && r.rows[0].type !== type))

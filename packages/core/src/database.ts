@@ -16,6 +16,7 @@ export interface Manifest {
   version: number;
   requires: ModuleId[];
   migration: string;
+  migrations?: string[];
 }
 export async function manifests(): Promise<Manifest[]> {
   return Promise.all(
@@ -41,7 +42,7 @@ export async function planModules(selected: string[]): Promise<Manifest[]> {
   return all.filter((x) => included.has(x.id));
 }
 export async function migrate(adminUrl: string, selected: string[]): Promise<Manifest[]> {
-  const plan = await planModules(selected);
+  let plan = await planModules(selected);
   const pool = new Pool({ connectionString: adminUrl });
   const c = await pool.connect();
   try {
@@ -54,52 +55,98 @@ export async function migrate(adminUrl: string, selected: string[]): Promise<Man
       await c.query("SELECT rolsuper,rolbypassrls FROM pg_roles WHERE rolname='sift_runtime'")
     ).rows[0];
     if (role.rolsuper || role.rolbypassrls) throw new Error('Unsafe existing sift_runtime role');
+    const exists = (await c.query("SELECT to_regclass('foundation.modules') AS name")).rows[0].name;
+    if (exists) {
+      const installed = (await c.query('SELECT id FROM foundation.modules')).rows;
+      plan = await planModules([...selected, ...installed.map((m) => m.id)]);
+    }
     for (const m of plan) {
-      const sql = await readFile(
-        new URL(`./modules/${m.id}/${m.migration}`, import.meta.url),
-        'utf8',
-      );
-      const checksum = digest(sql);
-      const exists = (await c.query("SELECT to_regclass('foundation.modules') AS name")).rows[0]
-        .name;
-      const installed = exists
-        ? (await c.query('SELECT * FROM foundation.modules WHERE id=$1', [m.id])).rows[0]
-        : undefined;
-      if (installed) {
-        if (installed.checksum !== checksum || installed.version !== m.version)
+      const files = m.migrations ?? [m.migration];
+      const installed =
+        m.id === 'foundation' && !exists
+          ? undefined
+          : (await c.query('SELECT * FROM foundation.modules WHERE id=$1', [m.id])).rows[0];
+      if (installed && installed.version > files.length)
+        throw new Error('Database version is newer than this executable');
+      for (const [index, file] of files.entries()) {
+        const version = index + 1;
+        const sql = await readFile(new URL(`./modules/${m.id}/${file}`, import.meta.url), 'utf8');
+        const checksum = digest(sql);
+        if (installed && installed.version === version && installed.checksum !== checksum)
           throw new Error(`Migration drift: ${m.id}`);
-        continue;
+        if (version === 1 && !installed) {
+          if (m.id !== 'foundation')
+            await c.query('INSERT INTO foundation.modules(id,version,checksum) VALUES($1,1,$2)', [
+              m.id,
+              checksum,
+            ]);
+          await c.query(sql);
+          if (m.id === 'foundation')
+            await c.query('INSERT INTO foundation.modules(id,version,checksum) VALUES($1,1,$2)', [
+              m.id,
+              checksum,
+            ]);
+        }
+        if (m.id === 'foundation' && version === 1) {
+          await c.query(
+            'CREATE TABLE IF NOT EXISTS foundation.migrations(module text NOT NULL REFERENCES foundation.modules(id), version integer NOT NULL, checksum text NOT NULL, PRIMARY KEY(module,version))',
+          );
+        }
+        const previous = (
+          await c.query(
+            'SELECT checksum FROM foundation.migrations WHERE module=$1 AND version=$2',
+            [m.id, version],
+          )
+        ).rows[0];
+        if (previous && previous.checksum !== checksum)
+          throw new Error(`Migration drift: ${m.id}/${file}`);
+        if (!previous) {
+          if (installed && installed.version > 1 && installed.version >= version)
+            throw new Error('Missing migration receipt');
+          if (version > 1) {
+            if (installed && installed.version >= version)
+              throw new Error('Missing migration receipt');
+            await c.query(sql);
+            await c.query('UPDATE foundation.modules SET version=$2,checksum=$3 WHERE id=$1', [
+              m.id,
+              version,
+              checksum,
+            ]);
+          }
+          await c.query(
+            'INSERT INTO foundation.migrations(module,version,checksum) VALUES($1,$2,$3)',
+            [m.id, version, checksum],
+          );
+        }
       }
-      if (m.id !== 'foundation')
-        await c.query('INSERT INTO foundation.modules(id,version,checksum) VALUES($1,$2,$3)', [
-          m.id,
-          m.version,
-          checksum,
-        ]);
-      await c.query(sql);
-      if (m.id === 'foundation')
-        await c.query('INSERT INTO foundation.modules(id,version,checksum) VALUES($1,$2,$3)', [
-          m.id,
-          m.version,
-          checksum,
-        ]);
+      const current = (await c.query('SELECT version FROM foundation.modules WHERE id=$1', [m.id]))
+        .rows[0];
+      if (current.version !== files.length || m.version !== files.length)
+        throw new Error('Inconsistent module migration version');
       const tables = await c.query(
         "SELECT table_name FROM information_schema.columns WHERE table_schema=$1 AND column_name='owner_id'",
         [m.id],
       );
       for (const { table_name: t } of tables.rows) {
         if (m.id === 'foundation' && t === 'principals') continue;
-        // Identifiers originate only in our bundled migration/catalog, never a request.
-        await c.query(
-          `ALTER TABLE "${m.id}"."${t}" ENABLE ROW LEVEL SECURITY; ALTER TABLE "${m.id}"."${t}" FORCE ROW LEVEL SECURITY; CREATE POLICY scope_isolation ON "${m.id}"."${t}" USING(foundation.visible(owner_id,scope_id)) WITH CHECK(foundation.visible(owner_id,scope_id));`,
-        );
+        const policy = (
+          await c.query(
+            'SELECT 1 FROM pg_policies WHERE schemaname=$1 AND tablename=$2 AND policyname=$3',
+            [m.id, t, 'scope_isolation'],
+          )
+        ).rowCount;
+        if (!policy)
+          await c.query(
+            `ALTER TABLE "${m.id}"."${t}" ENABLE ROW LEVEL SECURITY; ALTER TABLE "${m.id}"."${t}" FORCE ROW LEVEL SECURITY; CREATE POLICY scope_isolation ON "${m.id}"."${t}" USING(foundation.visible(owner_id,scope_id)) WITH CHECK(foundation.visible(owner_id,scope_id));`,
+          );
       }
       await c.query(
         `GRANT USAGE ON SCHEMA "${m.id}" TO sift_runtime; GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA "${m.id}" TO sift_runtime; GRANT USAGE,SELECT ON ALL SEQUENCES IN SCHEMA "${m.id}" TO sift_runtime;`,
       );
     }
+    await c.query('REVOKE INSERT,UPDATE,DELETE ON foundation.migrations FROM sift_runtime');
     await c.query(
-      'REVOKE ALL ON foundation.principals FROM sift_runtime; GRANT EXECUTE ON FUNCTION foundation.authenticate(text) TO sift_runtime;',
+      'REVOKE ALL ON foundation.principals FROM sift_runtime; REVOKE ALL ON FUNCTION foundation.authenticate(text) FROM PUBLIC; GRANT EXECUTE ON FUNCTION foundation.authenticate(text) TO sift_runtime;',
     );
     if (process.env.SIFT_RUNTIME_PASSWORD_FILE) {
       const password = (await readFile(process.env.SIFT_RUNTIME_PASSWORD_FILE, 'utf8')).trim();

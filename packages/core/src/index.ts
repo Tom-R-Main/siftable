@@ -14,6 +14,7 @@ import { workOperation } from './work.js';
 import { contentOperation } from './content.js';
 import { extensionOperation } from './extensions.js';
 export * from './database.js';
+export * from './backup.js';
 export { deriveVerificationCoverage } from './verificationCoverage.js';
 export async function catalog(pool: Pool, token: string, profile?: string[]) {
   const principal = await authenticate(pool, token);
@@ -145,6 +146,10 @@ export async function execute(
         return r.result;
       }
     }
+    if (contract.write)
+      await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [
+        `scope:${p.ownerId}:${p.scopeId ?? 'personal'}`,
+      ]);
     const result =
       contract.module === 'foundation'
         ? await foundationOperation(c, p, operation, args)

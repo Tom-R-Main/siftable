@@ -7,6 +7,7 @@ import {
   type Operation,
   type Principal,
 } from '@siftable/contracts';
+import { setDeleted } from './lifecycle.js';
 import { entity, reference, link, first, fail, enabled } from './helpers.js';
 const ajv = new Ajv({ strict: true, allErrors: false, validateFormats: false });
 const keywords = new Set([
@@ -84,6 +85,79 @@ export async function extensionOperation(
   await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [
     `extensions:${p.ownerId}:${p.scopeId ?? 'personal'}`,
   ]);
+  if (name === 'objects.delete' || name === 'objects.restore') {
+    const a = operations[name].input.parse(input);
+    return {
+      ...(await setDeleted(c, 'objects', a, name.endsWith('.restore'))),
+      deleted: name.endsWith('.delete'),
+    };
+  }
+  if (name === 'objects.update') {
+    const a = operations[name].input.parse(input);
+    await reference(c, a.id, 'extensions.object');
+    const old = first(
+      (
+        await c.query(
+          'SELECT type,version,revision FROM extensions.objects WHERE id=$1 FOR UPDATE',
+          [a.id],
+        )
+      ).rows,
+    );
+    if (old.revision !== a.revision) fail(409, 'revision_conflict', 'Record revision changed');
+    if (a.version < old.version) fail(409, 'schema_version', 'Record schema cannot move backwards');
+    const def = first(
+      (
+        await c.query(
+          'SELECT definition FROM extensions.definitions WHERE type=$1 AND version=$2',
+          [old.type, a.version],
+        )
+      ).rows,
+    );
+    if (!ajv.compile(def.definition as AnySchema)(a.data))
+      fail(400, 'invalid_record', 'Record violates its declared schema');
+    return first(
+      (
+        await c.query(
+          'UPDATE extensions.objects SET version=$2,data=$3,revision=revision+1 WHERE id=$1 RETURNING id,type,version,data,revision',
+          [a.id, a.version, JSON.stringify(a.data)],
+        )
+      ).rows,
+    );
+  }
+  if (name === 'relations.get' || name === 'relations.delete' || name === 'relations.update') {
+    const a = operations[name].input.parse(input);
+    const old = first(
+      (
+        await c.query('SELECT id,source_id,target_id,relation FROM foundation.links WHERE id=$1', [
+          a.id,
+        ])
+      ).rows,
+    );
+    // This API owns custom relationships only, never built-in work or project associations.
+    first(
+      (await c.query('SELECT type FROM extensions.relations WHERE type=$1', [old.relation])).rows,
+    );
+    if (name === 'relations.get') return old;
+    if (name === 'relations.delete') {
+      await c.query('DELETE FROM foundation.links WHERE id=$1', [a.id]);
+      return { id: a.id, deleted: true };
+    }
+    const v = operations['relations.update'].input.parse(input);
+    const def = first(
+      (await c.query('SELECT * FROM extensions.relations WHERE type=$1', [v.type])).rows,
+    );
+    if (def.source_type !== v.source.type || def.target_type !== v.target.type)
+      fail(400, 'endpoint_type', 'Relationship endpoint types do not match');
+    await endpoint(c, v.source.id, v.source.type);
+    await endpoint(c, v.target.id, v.target.type);
+    await c.query('UPDATE foundation.links SET source_id=$2,target_id=$3,relation=$4 WHERE id=$1', [
+      a.id,
+      v.source.id,
+      v.target.id,
+      v.type,
+    ]);
+    return v;
+  }
   if (name === 'extensions.define') {
     const a = operations[name].input.parse(input);
     if (moduleIds.some((prefix) => a.type.startsWith(prefix + '.')))
@@ -143,21 +217,25 @@ export async function extensionOperation(
       'INSERT INTO extensions.objects(id,owner_id,scope_id,type,version,data) VALUES($1,$2,$3,$4,$5,$6)',
       [id, p.ownerId, p.scopeId, a.type, a.version, JSON.stringify(a.data)],
     );
-    return { id, ...a };
+    return { id, ...a, revision: 1 };
   }
   if (name === 'objects.get') {
     const a = operations[name].input.parse(input);
     return first(
-      (await c.query('SELECT id,type,version,data FROM extensions.objects WHERE id=$1', [a.id]))
-        .rows,
+      (
+        await c.query(
+          'SELECT r.id,r.type,version,data,revision,e.deleted_at FROM extensions.objects r JOIN foundation.entities e USING(id) WHERE r.id=$1 AND ($2 OR e.deleted_at IS NULL)',
+          [a.id, a.includeDeleted],
+        )
+      ).rows,
     );
   }
   if (name === 'objects.list') {
     const a = operations[name].input.parse(input);
     return (
       await c.query(
-        'SELECT id,type,version,data FROM extensions.objects WHERE type=$1 ORDER BY created_at,id LIMIT $2 OFFSET $3',
-        [a.type, a.limit, a.offset],
+        'SELECT r.id,r.type,version,data,revision,e.deleted_at FROM extensions.objects r JOIN foundation.entities e USING(id) WHERE r.type=$1 AND ($4 OR e.deleted_at IS NULL) ORDER BY r.created_at,r.id LIMIT $2 OFFSET $3',
+        [a.type, a.limit, a.offset, a.includeDeleted],
       )
     ).rows;
   }
@@ -185,7 +263,7 @@ export async function extensionOperation(
     await endpoint(c, a.source.id, a.source.type);
     await endpoint(c, a.target.id, a.target.type);
     const id = await link(c, p, a.source.id, a.target.id, a.type);
-    return { id, ...a };
+    return { id, ...a, revision: 1 };
   }
   if (name === 'relations.list') {
     const a = operations[name].input.parse(input);

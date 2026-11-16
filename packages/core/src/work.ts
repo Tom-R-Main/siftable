@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { PoolClient } from 'pg';
 import { operations, canonical, type Operation, type Principal } from '@siftable/contracts';
+import { setDeleted } from './lifecycle.js';
 import { digest } from './database.js';
 import { agentWorkClaimTokenDigest } from './claimDigest.js';
 import { deriveVerificationCoverage } from './verificationCoverage.js';
@@ -8,6 +9,8 @@ import type { VerificationStep } from './verificationTypes.js';
 import { entity, reference, link, first, fail } from './helpers.js';
 interface WorkRow {
   id: string;
+  revision: number;
+  deleted_at: Date | null;
   title: string;
   description: string;
   status: string;
@@ -22,7 +25,12 @@ interface WorkRow {
 }
 async function item(c: PoolClient, id: string): Promise<WorkRow> {
   return first(
-    (await c.query<WorkRow>('SELECT * FROM work.items WHERE id=$1 FOR UPDATE', [id])).rows,
+    (
+      await c.query<WorkRow>(
+        'SELECT w.*,e.deleted_at FROM work.items w JOIN foundation.entities e USING(id) WHERE w.id=$1 FOR UPDATE OF w',
+        [id],
+      )
+    ).rows,
   );
 }
 async function event(
@@ -101,9 +109,10 @@ async function dependenciesReady(c: PoolClient, id: string): Promise<boolean> {
   for (const d of deps.rows) {
     const w = await item(c, d.predecessor_id);
     if (
-      d.gate === 'done'
+      w.deleted_at ||
+      (d.gate === 'done'
         ? w.status !== 'done'
-        : (await coverage(c, w)).coverage.state !== 'commands_passed'
+        : (await coverage(c, w)).coverage.state !== 'commands_passed')
     )
       return false;
   }
@@ -124,6 +133,7 @@ async function display(c: PoolClient, w: WorkRow) {
     ...publicFields,
     ...(await coverage(c, w)),
     claimable:
+      !w.deleted_at &&
       ready &&
       (w.status === 'queued' || (['claimed', 'running'].includes(w.status) && now.expired)),
     links: (
@@ -196,13 +206,19 @@ export async function workOperation(
   if (name === 'work.list') {
     const a = operations[name].input.parse(input);
     const r = await c.query<WorkRow>(
-      'SELECT * FROM work.items ORDER BY created_at,id LIMIT $1 OFFSET $2',
-      [a.limit, a.offset],
+      'SELECT w.*,e.deleted_at FROM work.items w JOIN foundation.entities e USING(id) WHERE ($3 OR e.deleted_at IS NULL) ORDER BY w.created_at,w.id LIMIT $1 OFFSET $2',
+      [a.limit, a.offset, a.includeDeleted],
     );
     return Promise.all(r.rows.map((w) => display(c, w)));
   }
   const a = operations[name].input.parse(input) as { id: string };
   const w = await item(c, a.id);
+  if (
+    w.deleted_at &&
+    name !== 'work.restore' &&
+    !(name === 'work.get' && operations[name].input.parse(input).includeDeleted)
+  )
+    fail(404, 'not_found', 'Record is unavailable');
   if (name === 'work.get')
     return {
       ...(await display(c, w)),
@@ -218,6 +234,18 @@ export async function workOperation(
           [w.id],
         )
       ).rows,
+      dependencies: (
+        await c.query(
+          'SELECT predecessor_id AS id,gate FROM work.dependencies WHERE work_id=$1 ORDER BY predecessor_id',
+          [w.id],
+        )
+      ).rows,
+      artifacts: (
+        await c.query(
+          'SELECT id,name,media_type,digest,plan_version,created_at FROM work.artifacts WHERE work_id=$1 ORDER BY created_at,id',
+          [w.id],
+        )
+      ).rows,
       plans: (
         await c.query(
           'SELECT version,steps,reason,actor FROM work.plans WHERE work_id=$1 ORDER BY version',
@@ -225,7 +253,102 @@ export async function workOperation(
         )
       ).rows,
     };
-  if (name === 'work.claim') {
+  if (name === 'work.artifacts.list') {
+    const a = operations[name].input.parse(input);
+    return (
+      await c.query(
+        'SELECT id,name,media_type,digest,plan_version,created_at FROM work.artifacts WHERE work_id=$1 ORDER BY created_at,id LIMIT $2 OFFSET $3',
+        [w.id, a.limit, a.offset],
+      )
+    ).rows;
+  }
+  if (name === 'work.artifacts.get') {
+    const a = operations[name].input.parse(input);
+    return first(
+      (
+        await c.query(
+          'SELECT id,name,media_type,content,digest,plan_version,created_at FROM work.artifacts WHERE work_id=$1 AND id=$2',
+          [w.id, a.artifactId],
+        )
+      ).rows,
+    );
+  }
+  if (name === 'work.delete' || name === 'work.restore') {
+    const a = operations[name].input.parse(input);
+    if (!['done', 'failed', 'cancelled'].includes(w.status))
+      fail(409, 'invalid_transition', 'Only terminal work may be deleted or restored');
+    if (
+      name === 'work.delete' &&
+      (
+        await c.query(
+          'SELECT 1 FROM work.dependencies d JOIN foundation.entities e ON e.id=d.work_id WHERE predecessor_id=$1 AND e.deleted_at IS NULL LIMIT 1',
+          [w.id],
+        )
+      ).rowCount
+    )
+      fail(409, 'referenced_record', 'Work is a dependency of another record');
+    if (name === 'work.restore') {
+      for (const d of (
+        await c.query('SELECT predecessor_id FROM work.dependencies WHERE work_id=$1', [w.id])
+      ).rows)
+        await reference(c, d.predecessor_id, 'work.item');
+    }
+    const result = await setDeleted(c, 'work', a, name.endsWith('.restore'));
+    await event(c, p, w.id, name, { reason: a.reason });
+    return { ...result, deleted: name.endsWith('.delete') };
+  }
+  if (name === 'work.update' || name === 'work.dependencies.set') {
+    const a = operations[name].input.parse(input);
+    if (w.status !== 'queued' && w.status !== 'blocked')
+      fail(409, 'invalid_transition', 'Edit only queued or blocked work');
+    if (w.revision !== a.revision) fail(409, 'revision_conflict', 'Work revision changed');
+    if (name === 'work.update') {
+      const v = operations[name].input.parse(input);
+      await c.query('UPDATE work.items SET title=$2,description=$3 WHERE id=$1', [
+        w.id,
+        v.title,
+        v.description,
+      ]);
+    } else {
+      const v = operations[name].input.parse(input);
+      if (new Set(v.dependencies.map((d) => d.id)).size !== v.dependencies.length)
+        fail(400, 'duplicate_dependency', 'Dependencies must be unique');
+      for (const d of v.dependencies) {
+        await reference(c, d.id, 'work.item');
+        const cycle =
+          d.id === w.id ||
+          (
+            await c.query(
+              'WITH RECURSIVE ancestors(id) AS (SELECT predecessor_id FROM work.dependencies WHERE work_id=$1 UNION SELECT d.predecessor_id FROM work.dependencies d JOIN ancestors a ON a.id=d.work_id) SELECT 1 FROM ancestors WHERE id=$2 LIMIT 1',
+              [d.id, w.id],
+            )
+          ).rowCount;
+        if (cycle) fail(409, 'dependency_cycle', 'Dependency would create a cycle');
+      }
+      await c.query('DELETE FROM work.dependencies WHERE work_id=$1', [w.id]);
+      for (const d of v.dependencies)
+        await c.query(
+          'INSERT INTO work.dependencies(owner_id,scope_id,work_id,predecessor_id,gate) VALUES($1,$2,$3,$4,$5)',
+          [p.ownerId, p.scopeId, w.id, d.id, d.gate],
+        );
+    }
+    const current = await coverage(c, w);
+    await plan(c, p, w.id, w.plan_version + 1, current.plan.steps, a.reason);
+    await c.query('UPDATE work.items SET plan_version=plan_version+1,summary=NULL WHERE id=$1', [
+      w.id,
+    ]);
+  } else if (name === 'work.requeue') {
+    const v = operations[name].input.parse(input);
+    if (!['blocked', 'failed', 'needs_review', 'cancelled'].includes(w.status))
+      fail(409, 'invalid_transition', 'Requeue only blocked, failed, reviewed or cancelled work');
+    const current = await coverage(c, w);
+    // A new execution cycle gets a new verification plan; old success cannot accept a retry.
+    await plan(c, p, w.id, w.plan_version + 1, current.plan.steps, v.reason);
+    await c.query(
+      "UPDATE work.items SET status='queued',plan_version=plan_version+1,summary=NULL,accepted_by=NULL,accepted_plan_version=NULL WHERE id=$1",
+      [w.id],
+    );
+  } else if (name === 'work.claim') {
     const v = operations[name].input.parse(input);
     if (!(await display(c, w)).claimable)
       fail(
@@ -247,17 +370,23 @@ export async function workOperation(
       [w.id, p.id, v.summary],
     );
   } else if (name === 'work.cancel') {
-    if (['done', 'cancelled'].includes(w.status)) fail(409, 'terminal', 'Work is terminal');
+    if (['done', 'cancelled', 'failed'].includes(w.status))
+      fail(409, 'terminal', 'Work is terminal');
     await c.query(
       "UPDATE work.items SET status='cancelled',claim_principal=NULL,claim_digest=NULL,expires_at=NULL WHERE id=$1",
       [w.id],
     );
   } else if (name === 'work.plan.revise') {
     const v = operations[name].input.parse(input);
+    if (['done', 'cancelled', 'failed'].includes(w.status))
+      fail(409, 'terminal', 'Requeue before revising terminal work');
     if (['claimed', 'running'].includes(w.status))
       fail(409, 'active_work', 'Release work before revising its plan');
     await plan(c, p, w.id, w.plan_version + 1, v.steps, v.reason);
-    await c.query('UPDATE work.items SET plan_version=plan_version+1 WHERE id=$1', [w.id]);
+    await c.query(
+      "UPDATE work.items SET plan_version=plan_version+1,status='queued',summary=NULL WHERE id=$1",
+      [w.id],
+    );
   } else {
     const v = operations['work.start'].input
       .pick({ claimSecret: true, epoch: true })
@@ -272,6 +401,29 @@ export async function workOperation(
       await c.query(
         "UPDATE work.items SET expires_at=clock_timestamp()+$2*interval '1 second' WHERE id=$1",
         [w.id, v.leaseSeconds],
+      );
+    } else if (name === 'work.block' || name === 'work.fail') {
+      const v = operations[name].input.parse(input);
+      await c.query(
+        'UPDATE work.items SET status=$2,summary=$3,claim_principal=NULL,claim_digest=NULL,expires_at=NULL WHERE id=$1',
+        [w.id, name === 'work.block' ? 'blocked' : 'failed', v.reason],
+      );
+    } else if (name === 'work.artifacts.add') {
+      const v = operations[name].input.parse(input);
+      await c.query(
+        'INSERT INTO work.artifacts(id,owner_id,scope_id,work_id,plan_version,name,media_type,content,digest,actor) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
+        [
+          randomUUID(),
+          p.ownerId,
+          p.scopeId,
+          w.id,
+          w.plan_version,
+          v.name,
+          v.mediaType,
+          v.content,
+          digest(v.content),
+          p.id,
+        ],
       );
     } else if (name === 'work.release' || name === 'work.review') {
       const summary = name === 'work.review' ? operations[name].input.parse(input).summary : null;
@@ -322,8 +474,14 @@ export async function workOperation(
         );
     } else fail(404, 'unknown_operation', 'Unsupported work operation');
   }
+  await c.query('UPDATE work.items SET revision=revision+1 WHERE id=$1', [w.id]);
+  const updated = await item(c, w.id);
   await event(c, p, w.id, name, {
-    planVersion: name === 'work.plan.revise' ? w.plan_version + 1 : w.plan_version,
+    ...('reason' in (input as object) ? { reason: (input as { reason: string }).reason } : {}),
+    planVersion: updated.plan_version,
+    ...(name === 'work.dependencies.set'
+      ? { dependencies: operations[name].input.parse(input).dependencies }
+      : {}),
   });
-  return display(c, await item(c, w.id));
+  return display(c, updated);
 }

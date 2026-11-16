@@ -4,6 +4,9 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { operations, moduleIds, type Operation } from '@siftable/contracts';
 import {
+  backupDatabase,
+  restoreDatabase,
+  verifyBackup,
   migrate,
   issueCredential,
   planModules,
@@ -15,6 +18,7 @@ const { positionals, values } = parseArgs({
   allowPositionals: true,
   options: {
     help: { type: 'boolean' },
+    database: { type: 'string' },
     config: { type: 'string' },
     modules: { type: 'string' },
     output: { type: 'string' },
@@ -41,11 +45,36 @@ async function main() {
         'install --modules work',
         'credential --owner-id <id> --role agent --permissions work:read,work:write --output <file>',
         'revoke --id <principal-id>',
+        'backup --output <new-private-directory>',
+        'backup-verify --file <backup-directory>',
+        'restore --file <backup-directory> --database <new-database-name>',
       ],
       adminEnvironment: 'SIFT_ADMIN_DATABASE_URL (read internally; never printed)',
       operations: Object.keys(operations),
       modules: moduleIds,
     });
+    return;
+  }
+  if (command === 'backup-verify') {
+    if (!values.file) throw new Error('--file required');
+    const m = await verifyBackup(values.file);
+    print({
+      verified: true,
+      sha256: m.archiveSha256,
+      modules: m.modules.map((x) => x.id),
+      tables: m.tables.length,
+    });
+    return;
+  }
+  if (command === 'backup' || command === 'restore') {
+    const db = await databaseUrlFromEnvironment(true);
+    if (command === 'backup') {
+      if (!values.output) throw new Error('--output required');
+      print(await backupDatabase(db, values.output));
+    } else {
+      if (!values.file || !values.database) throw new Error('--file and --database required');
+      print(await restoreDatabase(db, values.file, values.database));
+    }
     return;
   }
   if (command === 'modules-plan') {
@@ -114,7 +143,10 @@ try {
   // Never print database/transport internals, supplied input, or credentials.
   const known =
     e instanceof Error &&
-    ('status' in e || !['init', 'install', 'credential', 'revoke'].includes(command ?? ''));
+    ('status' in e ||
+      !['init', 'install', 'credential', 'revoke', 'backup', 'restore', 'backup-verify'].includes(
+        command ?? '',
+      ));
   process.stderr.write(
     JSON.stringify({
       error:

@@ -10,7 +10,7 @@ Current milestone: steps 0–5, bounded core vertical slice. Deliver foundation,
 
 Architecture: TypeScript/Node + Express + PostgreSQL; npm workspaces; one service; explicit module SQL ownership and registered operations. No browser or model/provider credentials needed. Synthetic local credentials remain opaque and outside tracked files.
 
-Status: implementation started. Next dependency: fresh-schema bootstrap and scoped work operations; acceptance evidence pending. This record will carry exact test outcomes and remaining limitations.
+Current status: the core extraction plus CRUD/work lifecycle and backup/restore are implemented and checked locally. The milestone sections below preserve chronology and acceptance evidence. Proposed next target: docs/GOAL.md.
 
 ## First extraction milestone: implemented and checked
 
@@ -45,7 +45,7 @@ Corrections and failed observations preserved:
 4. Inspection found module references must be enforced across credential scopes and declaration-only relationships, not just visible record links. Added a global module-reference ledger and exercised module addition/declaration refusal.
 5. The first generated Compose database contained zero projects, notes or work items when the baseline was finalized. Only that owned synthetic database volume and its generated bootstrap credential were recreated for the final smoke test; the source repository and all pre-existing services/data were preserved.
 
-Remaining work, deliberately not claimed complete:
+Remaining work after the first milestone (historical; see the next milestone for resolved items):
 
 - Full CRUD/archive/repository identity APIs, work edit/block/fail/requeue and dependency edits, wider planning commands, artifact persistence/inspection, and all old public-contract parity.
 - Code-memory and collaboration modules; managed execution remains outside this slice.
@@ -56,3 +56,40 @@ Remaining work, deliberately not claimed complete:
 Next implementation dependency: backup/restore with module/evidence integrity checks, then complete the bounded CRUD/work lifecycle before expanding optional domains. Keep the current registry and acceptance journey as the compatibility oracle. Future schema changes require new migrations rather than modifying a baseline already installed by users.
 
 Final receipt: `docs/validation/receipt.json`, with passing TAP reports alongside it. All 15 runtime TypeScript source files were hashed inside the tested image and matched to this checkout. Final acceptance uses nine scenarios/ten Node tests including the parent, with zero failures/skips. Three unit tests also pass. Owned temporary acceptance containers/networks were removed; the local Compose instance is stopped with its volume and protected credentials retained. Resume with `docker compose start`.
+
+
+## Second milestone: CRUD, lifecycle and recovery
+
+User authorization: “Keep going with the extraction. Add backup/restore and finish the remaining CRUD and work lifecycle operations, then prove those flows work too. Keep everything local for now.” No publication, push, cloud mutation or production-data import is authorized or performed. The conceptual end state and next proposed goal are in `GOAL.md`; they do not widen current authority.
+
+Delivered **60 registry operations** across the same six modules:
+
+- Projects, notes, human tasks and custom records now have create/read/list/update/delete/restore paths. Edits use optimistic revisions; owner-only deletion is reversible tombstoning, with reference checks. Note title/source/body changes and deletion/restoration advance immutable revision history. Human task completion remains distinct from work acceptance. Custom relationships have read/update/delete operations while definitions remain immutable.
+- Work edit, dependency replacement with cycle checks, block/fail/requeue, terminal delete/restore, and bounded immutable text artifacts. Claim/start/heartbeat/release/review/accept/cancel and evidence remain covered. Requeue, changed intent and dependency edits start a new plan version; prior success cannot approve a retry or changed work. Accepted work cannot be requeued or have its accepted plan revised. Events record transition reasons and current plan versions.
+- Every original `001.sql` remains unchanged. Six new `002.sql` migrations add lifecycle fields/artifacts. The runner verifies a per-version checksum ledger and upgrades installed modules transactionally, including disabled modules, while preserving their enablement state. Fresh module-only installations remain physically independent.
+- Local admin CLI `backup`, `backup-verify`, and `restore`. Native PostgreSQL 17 snapshot archives include only installed module schemas, with protected files and a completion manifest. Restore requires a new database, verifies per-table row counts/content hashes, reapplies restricted grants, and invalidates active leases with history/epoch changes. Existing databases and serving configuration are never overwritten or switched automatically. Corrupt backups and incompatible module versions fail closed. Failed new targets remain quarantined for inspection, not automatically dropped.
+
+Proof boundary: **checked locally**, through built Node 22 container CLI/server/MCP artifacts and PostgreSQL 17. Fifteen integration scenarios pass (16 Node tests including the parent), plus three pure tests, with zero failures/skips. TypeScript, formatting and diff whitespace checks pass. No independent reviewer, second host, external user or adoption outcome is claimed.
+
+Added acceptance evidence includes:
+
+- A seeded version-1 database upgrades without losing its project; rerunning install is safe; altered migration receipts are rejected.
+- CRUD updates, stale edit rejection, list/search hiding, revision history, delete/restore ordering, invalid custom data, custom edge edits/removal and cross-scope refusal.
+- Actual MCP worker retry/artifact/evidence flow; cycle rejection, blocked/failed transitions, heartbeat, owner review, fresh coverage after retry/edit, immutable accepted plan, and terminal tombstone inspection/restoration.
+- Full-profile backup/recovery compares every table's hash before serving, then reads accepted work/evidence/custom schemas/notes and replays an existing receipt through the recovered API. New writes work after restoration. Active leases become queued with incremented epochs and recorded restore events.
+- Context-only recovery retains only its two schemas and preserves disabled context state. Corrupt archive bytes and a deliberately false table hash are rejected. Existing-target restore is refused. A failed new target denies runtime CONNECT. Direct runtime SQL remains scoped and cannot read principal hashes after recovery.
+
+Review correction: inspection found that editing released work with previously passing evidence could retain the old coverage. Work/dependency edits now create new plan versions, with a negative test that refuses acceptance without fresh evidence. Backup row hashing explicitly uses UTC; snapshot acquisition holds the migration lock before creating the snapshot. A final migration review also closed missing-ledger and inconsistent module-metadata cases; both now fail closed and have negative acceptance checks.
+
+Retained local installation: saved a private pre-upgrade PostgreSQL archive at `.local/pre-upgrade-v1.dump`, upgraded all six modules to version 2, and verified loopback API/catalog access. Created and verified `.local/backup-v2-20261116/` (23 owned tables), then restored into `siftable_recovery_20261116` with verified integrity. Original and recovered databases are both retained; the service still points at the original `siftable` database. Credentials and backup contents were never emitted in chat or tracked. The retained Compose services are stopped after verification; resume with `docker compose start`.
+
+Current limits and next dependency:
+
+- This completes the bounded record CRUD/work lifecycle, not the full former SaaS contract. Repository checkout mapping, rich goals/planning, code memory, collaboration and managed execution remain deferred.
+- Deletion preserves data and is not secure erasure. Module dependency metadata remains conservative; disabling/uninstalling a formerly linked module may need a future explicit migration. Relationship cardinality and breaking custom-schema migrations remain deferred.
+- Backup requires PostgreSQL major 17 and the executable matching module schema versions; retain application artifacts alongside backups. It excludes plaintext credentials, database role passwords, external files and unrelated schemas. Only trusted native archives may be restored. Portable record interchange/import and retention scheduling remain future work.
+- No throughput qualification, broad host compatibility proof, independent security/release review, root-license decision or public release.
+
+Next proposed milestone: use one real local project for two agent handoffs and a recovery drill, record actual friction, then stabilize documentation/contracts and verify on a second host. Do not add optional domains merely to complete the old product inventory. Release remains a separate decision.
+
+The updated machine-readable receipt and TAP reports are under `docs/validation/`. They identify the tested container and source hashes; local commit identity is separate from runtime verification.

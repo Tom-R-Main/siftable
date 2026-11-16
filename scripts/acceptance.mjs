@@ -25,6 +25,8 @@ async function run(args, capture = false) {
 let createdNetwork = false,
   createdDb = false;
 try {
+  const image = process.env.SIFT_TEST_IMAGE ?? 'siftable-headless:acceptance';
+  if (!process.env.SIFT_TEST_IMAGE) await run(['build', '-t', image, '.']);
   await run(['network', 'create', '--internal', network], true);
   createdNetwork = true;
   await run(
@@ -65,8 +67,9 @@ try {
     '/workspace',
     '-e',
     `TEST_ADMIN_DATABASE_URL=postgresql://postgres@${db}/postgres`,
-    ...(process.env.SIFT_TEST_IMAGE ? ['-e', 'SIFT_ARTIFACT_ROOT=/app'] : []),
-    process.env.SIFT_TEST_IMAGE ?? 'node:22.23.3-alpine',
+    '-e',
+    'SIFT_ARTIFACT_ROOT=/app',
+    image,
     'node',
     '--test',
     '--test-concurrency=1',

@@ -1,8 +1,12 @@
 {
   "id": "extensions",
-  "version": 1,
+  "version": 2,
   "requires": [
     "foundation"
   ],
-  "migration": "001.sql"
+  "migration": "001.sql",
+  "migrations": [
+    "001.sql",
+    "002.sql"
+  ]
 }
