@@ -1,0 +1,147 @@
+{
+  "startedAt": "2026-11-16T22:11:12.268Z",
+  "uid": 10001,
+  "checks": [
+    "fresh non-root home, npm, application, Docker image/container/volume state",
+    "missing configuration fails before bootstrap",
+    "README bootstrap and first CLI access with host-owned private credentials",
+    "CLI create/claim -> actual stdio MCP context/evidence/review -> owner CLI acceptance",
+    "documented stop/start retains accepted work",
+    "README backup/verify/restore/switch preserves actual CLI/MCP work and note"
+  ],
+  "runtime": {
+    "node": "v22.23.3",
+    "platform": "linux",
+    "arch": "arm64",
+    "docker": "29.9.3",
+    "compose": "5.7.1"
+  },
+  "identity": {
+    "ownerId": "945bca0f-acbb-493d-8d58-ded7e76ae550",
+    "principalId": "fa795fd1-bca9-4fa7-b0a6-342b1d9afdc7",
+    "scopeId": null
+  },
+  "modules": [
+    {
+      "id": "context",
+      "version": 2,
+      "enabled": true
+    },
+    {
+      "id": "extensions",
+      "version": 2,
+      "enabled": true
+    },
+    {
+      "id": "foundation",
+      "version": 2,
+      "enabled": true
+    },
+    {
+      "id": "planning",
+      "version": 2,
+      "enabled": true
+    },
+    {
+      "id": "projects",
+      "version": 2,
+      "enabled": true
+    },
+    {
+      "id": "work",
+      "version": 2,
+      "enabled": true
+    }
+  ],
+  "schemas": {
+    "types": [
+      {
+        "type": "context.note",
+        "module": "context"
+      },
+      {
+        "type": "context.packet",
+        "module": "context"
+      },
+      {
+        "type": "extensions.object",
+        "module": "extensions"
+      },
+      {
+        "type": "planning.task",
+        "module": "planning"
+      },
+      {
+        "type": "projects.project",
+        "module": "projects"
+      },
+      {
+        "type": "work.item",
+        "module": "work"
+      }
+    ],
+    "extensions": []
+  },
+  "flow": {
+    "runId": "1273908c-9c9e-4a61-8cfc-2bdec4304f16",
+    "projectId": "8d3b2691-199e-45fd-ab1e-aeb22b46050c",
+    "noteId": "43d34e38-2001-4829-a55e-5eb4cbcddb1d",
+    "workId": "f9d45179-7376-4f6b-9440-c85b2201473d",
+    "packetId": "2faa59f1-2f6d-424b-b636-d2f02f6b3068",
+    "status": "done",
+    "coverage": "commands_passed",
+    "agentAcceptanceRefused": true,
+    "credentialRevoked": true
+  },
+  "backup": {
+    "backup": "/run/sift/backup-001",
+    "sha256": "8bd9f4c4707a9096ec2529bbb63b0fc72c00f5c788c4bff8e1050d69007105aa",
+    "modules": [
+      "context",
+      "extensions",
+      "foundation",
+      "planning",
+      "projects",
+      "work"
+    ],
+    "tables": 23,
+    "rows": 67
+  },
+  "backupVerified": {
+    "verified": true,
+    "sha256": "8bd9f4c4707a9096ec2529bbb63b0fc72c00f5c788c4bff8e1050d69007105aa",
+    "modules": [
+      "context",
+      "extensions",
+      "foundation",
+      "planning",
+      "projects",
+      "work"
+    ],
+    "tables": 23
+  },
+  "restore": {
+    "database": "siftable_recovered",
+    "integrity": "verified",
+    "modules": [
+      "context",
+      "extensions",
+      "foundation",
+      "planning",
+      "projects",
+      "work"
+    ],
+    "tables": 23,
+    "invalidatedLeases": 0,
+    "credentials": "Existing protected credential files can be repointed, or issue new credentials for the restored owner/scope"
+  },
+  "finishedAt": "2026-11-16T22:12:08.478Z",
+  "source": {
+    "head": "8a10f258a9da5ed607d317ef526d68f517c35e7b",
+    "archiveSha256": "27f2779b323de6703bf0d7a045b8709f22807a2a46a65a2b8f59e2270cd32572"
+  },
+  "runExitCode": 0,
+  "cleanup": "Owned container, anonymous volumes and harness image removed",
+  "reviewedExecutableRevision": "c915c694d9807ef334faece556d02e4b8fdedd54",
+  "sourceDifference": "Only evidence/documentation changes between reviewed revision and tested archive; packages/apps/modules/scripts/tests unchanged."
+}

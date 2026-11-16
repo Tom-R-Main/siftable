@@ -1,0 +1,28 @@
+{
+  "observedAt": "2026-11-16T22:11:48.223635+00:00",
+  "authorization": "Thomas: Restart Docker and finish verification",
+  "restartCommand": "docker desktop restart --timeout 120",
+  "restartExitCode": 0,
+  "failedHelperCleanup": {
+    "container": "sift-readme-71dbb012",
+    "anonymousVolume": "2e1da5ddce6f309bfbdf1be994c1da21fbd9965d95310f3970705f6cfdc288b2",
+    "harnessImage": "siftable-readme-runner:71dbb012",
+    "result": "removed; no unrelated resource pruning"
+  },
+  "pilot": {
+    "containerId": "92b59b38524f67482b36f8b4a333878fc117257a36931b1f62456ec1de53698c",
+    "image": "sha256:591c175d369236234f1415aa637df92a394163e5db99ec95027fda17b96a8e22",
+    "beforeStart": "2026-11-16T19:12:03.204090254Z",
+    "afterStart": "2026-11-16T22:10:33.0723873Z",
+    "healthStatus": 200,
+    "healthBody": {
+      "status": "ok"
+    },
+    "applicationDataMutations": false,
+    "reviewedImageActivated": false
+  },
+  "finalObservedAt": "2026-11-16T22:13:16.125061+00:00",
+  "finalPilotHealthStatus": 200,
+  "finalCleanRunExitCode": 0,
+  "remainingReadmeHelpers": []
+}

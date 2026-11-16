@@ -24,7 +24,33 @@
     "image": "sha256:548afd5f4c3dbc48dac5bdeada9d362f1c478d4c234b544ff51c262debbfba10",
     "matchedFiles": 53
   },
-  "cleanEnvironmentRerun": {
+  "pilot": {
+    "before": "92b59b38524f67482b36f8b4a333878fc117257a36931b1f62456ec1de53698c sha256:591c175d369236234f1415aa637df92a394163e5db99ec95027fda17b96a8e22 2026-11-16T19:12:03.204090254Z",
+    "after": "92b59b38524f67482b36f8b4a333878fc117257a36931b1f62456ec1de53698c sha256:591c175d369236234f1415aa637df92a394163e5db99ec95027fda17b96a8e22 2026-11-16T22:10:33.0723873Z",
+    "lastObservedHealthStatus": 200,
+    "credentialsRead": false,
+    "applicationDataMutated": false,
+    "serverRestarted": true,
+    "beforeAuthorizedRestart": "92b59b38524f67482b36f8b4a333878fc117257a36931b1f62456ec1de53698c sha256:591c175d369236234f1415aa637df92a394163e5db99ec95027fda17b96a8e22 2026-11-16T19:12:03.204090254Z",
+    "storageFailureHealthStatus": 500,
+    "applicationImageChanged": false
+  },
+  "authorization": {
+    "published": false,
+    "pushed": false,
+    "cloudActions": false,
+    "dockerDesktopRestart": "Thomas approved; docker desktop restart --timeout 120 completed, existing pilot containers resumed",
+    "cleanup": "Only review-owned disposable resources; no broad pruning or unrelated deletion"
+  },
+  "limitations": [
+    "Exact delegated model identifiers unavailable; no model diversity claimed.",
+    "Native archives and operator/admin remain trusted.",
+    "Lease retry custody is endpoint-specific; different URLs require fresh claims/keys.",
+    "Post-snapshot credential revocations require explicit reconciliation.",
+    "Existing runtime-role/RLS administrative tampering is outside the tested threat boundary.",
+    "No independent human usability, performance or security certification."
+  ],
+  "failedCleanEnvironmentAttempt": {
     "source": {
       "head": "c915c694d9807ef334faece556d02e4b8fdedd54",
       "archiveSha256": "2f3135d90017a0e44c28ffa6c070ffe561f280165f0185ca2bc4bb6d538fee76"
@@ -37,26 +63,19 @@
     "cleanup": "blocked by Docker metadata filesystem read-only",
     "ownedHelper": "sift-readme-71dbb012"
   },
-  "pilot": {
-    "before": "92b59b38524f67482b36f8b4a333878fc117257a36931b1f62456ec1de53698c sha256:591c175d369236234f1415aa637df92a394163e5db99ec95027fda17b96a8e22 2026-11-16T19:12:03.204090254Z",
-    "after": "92b59b38524f67482b36f8b4a333878fc117257a36931b1f62456ec1de53698c sha256:591c175d369236234f1415aa637df92a394163e5db99ec95027fda17b96a8e22 2026-11-16T19:12:03.204090254Z",
-    "lastObservedHealthStatus": 500,
-    "credentialsRead": false,
-    "applicationDataMutated": false,
-    "serverRestarted": false
-  },
-  "authorization": {
-    "published": false,
-    "pushed": false,
-    "cloudActions": false,
-    "dockerDesktopRestart": "approval requested, not performed"
-  },
-  "limitations": [
-    "Exact delegated model identifiers unavailable; no model diversity claimed.",
-    "Native archives and operator/admin remain trusted.",
-    "Lease retry custody is endpoint-specific; different URLs require fresh claims/keys.",
-    "Post-snapshot credential revocations require explicit reconciliation.",
-    "Existing runtime-role/RLS administrative tampering is outside the tested threat boundary.",
-    "No independent human usability, performance or security certification."
-  ]
+  "cleanEnvironmentRerun": {
+    "source": {
+      "head": "8a10f258a9da5ed607d317ef526d68f517c35e7b",
+      "archiveSha256": "27f2779b323de6703bf0d7a045b8709f22807a2a46a65a2b8f59e2270cd32572"
+    },
+    "bootstrap": "passed",
+    "cliMcpWorkflow": "passed",
+    "restart": "passed",
+    "recovery": "passed; 23 tables verified, accepted work and note read back",
+    "fullGate": "passed",
+    "cleanup": "completed",
+    "receipt": "clean-environment.json",
+    "transcript": "readme-after-restart.txt",
+    "reviewedExecutableRevision": "c915c694d9807ef334faece556d02e4b8fdedd54"
+  }
 }
