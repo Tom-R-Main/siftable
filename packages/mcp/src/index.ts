@@ -22,7 +22,7 @@ const server = new Server(
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: (await visible()).map((t) => {
     const op = operations[t.name as Operation];
-    const schema = z.toJSONSchema(op.input) as {
+    const schema = z.toJSONSchema(op.input, { io: 'input' }) as {
       properties: Record<string, unknown>;
       required?: string[];
       type: 'object';

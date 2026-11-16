@@ -6,11 +6,11 @@ Authorization: create a new local repository from Tom-R-Main/siftable, reuse any
 
 Source: ExecuFunction fb762fd2be4ec62e8ebd8048d75721fbb05ad5c6. Governing plan: docs/extraction-plan.md.
 
-Current milestone: steps 0–5, bounded core vertical slice. Deliver foundation, selectable projects/context/work/extensions, basic planning if core gates permit, real CLI and stdio MCP, durable verification and local operator review. Optional code-memory/collaboration, full hosted-client compatibility, production data import and public release remain subsequent milestones.
+Current milestone: core extraction, CRUD/lifecycle/recovery and the first real local pilot are complete. The original steps 0–5 delivered selectable modules, CLI/MCP, durable verification and operator review; later sections record the completed pilot. Recommended next gate is unaided setup on a second host and independent review. Optional code-memory/collaboration, full hosted-client compatibility, production data import and public release remain deferred.
 
 Architecture: TypeScript/Node + Express + PostgreSQL; npm workspaces; one service; explicit module SQL ownership and registered operations. No browser or model/provider credentials needed. Synthetic local credentials remain opaque and outside tracked files.
 
-Current status: the core extraction plus CRUD/work lifecycle and backup/restore are implemented and checked locally. The milestone sections below preserve chronology and acceptance evidence. Proposed next target: docs/GOAL.md.
+Current status: the core extraction plus CRUD/work lifecycle and backup/restore are implemented, checked, and used locally for the extraction’s own two-agent-handoff recovery pilot. The milestone sections below preserve chronology and acceptance evidence. Proposed next target: docs/GOAL.md.
 
 ## First extraction milestone: implemented and checked
 
@@ -93,3 +93,32 @@ Current limits and next dependency:
 Next proposed milestone: use one real local project for two agent handoffs and a recovery drill, record actual friction, then stabilize documentation/contracts and verify on a second host. Do not add optional domains merely to complete the old product inventory. Release remains a separate decision.
 
 The updated machine-readable receipt and TAP reports are under `docs/validation/`. They identify the tested container and source hashes; local commit identity is separate from runtime verification.
+
+## First real-use pilot: completed locally
+
+Authorization (2026-11-16): Thomas asked to use the extraction itself as the first real project, run two agent handoffs and a recovery drill through CLI/MCP, fix encountered friction, and keep everything local. The user started the retained service; leave that service available. Root owns coordination, recovery isolation, final evidence reconciliation and docs. Independently delegated agents will own discovery, repair, and recovered-state verification in sequence.
+
+Proof obligation: actual separate agents must consume the persisted handoff records, not merely repeat a scripted synthetic journey. Source database `siftable` at loopback port 8088 remains authoritative. The restored database is a verification branch; reconcile its evidence back to source explicitly. Do not switch the source service or overwrite a database. The code repository and this execution record remain the implementation authority; the local project/work records carry executable handoff state.
+
+Bounded job: discover and repair one concrete CLI/MCP usability problem while conducting the extraction's own handoff. Failure controls include the original unrepaired behavior, prior failed evidence retained, stale source lease refusal on recovery, and unchanged source serving state. No public release, cloud mutation, production import or claim of outside adoption. Agent verification and root operator acceptance are not Thomas's human acceptance.
+
+The private operational receipt is `.local/pilot-20261116/run.json`; it stores IDs and credential paths, never credential values. Final non-secret findings and runtime evidence will be referenced here after the drill.
+
+
+Pilot outcome: the extraction is now its own first real local project. Actual independent agents A → B → C performed two handoffs on work `b3cbe36c-07cd-44ae-ab26-cd76ed458668`. A used CLI, B consumed stored context through MCP, and C resumed the restored snapshot through MCP/CLI before explicitly appending its evidence back to the canonical source. Source project `cede87ab-2050-4760-8548-4d1b4877e697` and task `3bb2ec9a-2d80-4af2-a79c-a4e787d1097c` persist locally.
+
+Observed friction and corrections:
+
+- A could not discover required payload fields from operation help; proceeding required private assignment hints. B implemented credential-free, registry-backed CLI operation help and six subprocess tests, including all 60 operation schemas. A's failed attempt was retained, followed by B/C successful verification.
+- C found MCP tool discovery incorrectly marked defaulted inputs required. Root switched it to input-mode JSON Schema; C independently verified fresh tool discovery and omitted-default calls. The original mismatch and correction remain separate immutable reports.
+- C's artifact write required listing to discover its new ID. Root added `artifactId` to new mutation receipts/events. Follow-up work `9eaa6edb-7025-4e44-bc48-d6b63c628a8b` preserves that observation and C's independent direct-get, identical-key replay, and changed-input rejection checks. Previous receipts remain unchanged.
+
+Recovery: the real mid-work snapshot verified 23 tables/96 rows and restored into `siftable_pilot_20261116`. B's active epoch 2 became queued epoch 3, with an invalidation event. Replaying B's exact claim returned its historical receipt, but a new heartbeat using that old lease was rejected. C freshly claimed at epoch 4 and continued useful work. Source remained the canonical database; the drill database was never promoted. After final regression checks, only the source API container was reloaded to deliver the artifact-receipt fix; the source database and records were preserved.
+
+Acceptance: root reviewed the actual records/reports/digests and passing regression checks, then used the owner CLI to record delegated technical acceptance of main and follow-up work. Both are `done` with `commands_passed`; the human planning task is `done`. This is not Thomas's human acceptance or outside adoption. C's recovered verification branch remains `needs_review`, distinctly not promoted or operator-accepted.
+
+Final validation: 9 unit/CLI tests, 15 packaged integration scenarios (16 Node tests including their parent), typecheck, formatting and diff checks pass. The actual MCP regression now checks optional defaults and artifact-ID direct retrieval/replay. Final tested runtime sources/artifacts/modules are hashed in the pilot receipt.
+
+Cleanup: original service stays available at `http://127.0.0.1:8088`. The temporary recovery server was stopped and removed. Both databases and private backups remain. A/B/C temporary credentials were revoked in both databases and rejection was checked. A final verified checkpoint backup at `.local/pilot-20261116/backup-complete/` captures the accepted work and revocations (23 tables/163 rows); this is separate from the mid-work drill archive.
+
+Evidence: `docs/pilot/2026-11-16.md`, `docs/pilot/receipt.json`, and test reports beside them. Highest proven boundary: **used locally on the real extraction job**, including independent agent continuation and recovery. Next unresolved dependency is unaided setup on a second clean host plus independent review; no additional domain expansion or publication was authorized.

@@ -1,0 +1,1116 @@
+{
+  "date": "2026-11-16",
+  "status": "used-locally",
+  "published": false,
+  "startingCommit": "5f27875",
+  "projectId": "cede87ab-2050-4760-8548-4d1b4877e697",
+  "taskId": "3bb2ec9a-2d80-4af2-a79c-a4e787d1097c",
+  "humanAcceptance": "not claimed; root recorded delegated technical operator acceptance",
+  "agents": [
+    {
+      "agent": "/root/pilot_discovery",
+      "credentialPrincipal": "9cbe3f27-c4d8-4bdc-8326-0151d6a7cb4c",
+      "entry": "CLI"
+    },
+    {
+      "agent": "/root/pilot_repair",
+      "credentialPrincipal": "37d55f57-fb2e-4603-bcb0-e2ae96b2fbfe",
+      "entry": "MCP + CLI"
+    },
+    {
+      "agent": "/root/pilot_recovered_verification",
+      "credentialPrincipal": "1d2c08a2-5cc4-4c03-aa82-7aa3948926bd",
+      "entry": "recovered MCP -> CLI -> MCP; explicit source reconciliation"
+    }
+  ],
+  "handoffs": 2,
+  "mainWork": {
+    "id": "b3cbe36c-07cd-44ae-ab26-cd76ed458668",
+    "status": "done",
+    "epoch": 3,
+    "revision": 22,
+    "plan_version": 1,
+    "accepted_by": "d4c9846d-3a97-4373-a02d-15acff87aa56",
+    "accepted_plan_version": 1,
+    "coverage": {
+      "state": "commands_passed",
+      "required": 3,
+      "covered": 3,
+      "passed": 3,
+      "missingStepIds": [],
+      "failedStepIds": [],
+      "steps": [
+        {
+          "step": {
+            "id": "553a3980-1059-4cbc-a566-754fafa5b23c",
+            "key": "usable_cli",
+            "title": "Required operation input can be discovered and used without reading TypeScript",
+            "required": true
+          },
+          "latestAttempt": {
+            "stepId": "553a3980-1059-4cbc-a566-754fafa5b23c",
+            "outcome": "passed",
+            "ranAt": "2026-11-16T19:08:15.678Z",
+            "createdAt": "2026-11-16T19:08:15.678Z",
+            "sequence": 4
+          },
+          "covered": true,
+          "passed": true
+        },
+        {
+          "step": {
+            "id": "380114ad-093b-4c66-bc3a-5da8be3c8849",
+            "key": "handoff",
+            "title": "Independent successor retrieved persisted context and prior findings through MCP",
+            "required": true
+          },
+          "latestAttempt": {
+            "stepId": "380114ad-093b-4c66-bc3a-5da8be3c8849",
+            "outcome": "passed",
+            "ranAt": "2026-11-16T19:08:16.126Z",
+            "createdAt": "2026-11-16T19:08:16.126Z",
+            "sequence": 5
+          },
+          "covered": true,
+          "passed": true
+        },
+        {
+          "step": {
+            "id": "6ec7c666-e932-4695-b5c5-27ce58c55b16",
+            "key": "recovery",
+            "title": "Fresh database restores prior records and a third agent continues through MCP",
+            "required": true
+          },
+          "latestAttempt": {
+            "stepId": "6ec7c666-e932-4695-b5c5-27ce58c55b16",
+            "outcome": "passed",
+            "ranAt": "2026-11-16T19:08:16.573Z",
+            "createdAt": "2026-11-16T19:08:16.573Z",
+            "sequence": 6
+          },
+          "covered": true,
+          "passed": true
+        }
+      ]
+    },
+    "evidence": [
+      {
+        "plan_version": 1,
+        "step_id": "553a3980-1059-4cbc-a566-754fafa5b23c",
+        "attempt_id": "pilot-a-discovery",
+        "outcome": "failed",
+        "output": "README plus global/operation --help, catalog and schema.inspect did not disclose complete caller input schemas. work.claim --help and work.artifacts.add --help both exit 0 with generic global help. Successful authenticated reads and claim/start prove service and credentials work. Actual mutation fields came from private task instructions, not discovery. Durable Markdown handoff records exact reproduction and repair acceptance.",
+        "provenance": "local-pilot://agent-a",
+        "submitted_by": "9cbe3f27-c4d8-4bdc-8326-0151d6a7cb4c",
+        "created_at": "2026-11-16T18:58:02.387Z"
+      },
+      {
+        "plan_version": 1,
+        "step_id": "380114ad-093b-4c66-bc3a-5da8be3c8849",
+        "attempt_id": "pilot-b-mcp-handoff",
+        "outcome": "passed",
+        "output": "Agent B first retrieved work_get through the real MCP executable, then independently retrieved linked project cede87ab-2050-4760-8548-4d1b4877e697, authority note b9d25efe-f86d-4f8b-b450-2ce50d7620d3 and A artifact 09a90e3a-9246-4f90-aa47-1f1926866819 through projects_get, notes_get and work_artifacts_get. Read the persisted reproduction and acceptance controls before investigating source. Work was queued and claimable after A release; claimed with pilot-b-claim and started.",
+        "provenance": "local-pilot://agent-b/mcp",
+        "submitted_by": "37d55f57-fb2e-4603-bcb0-e2ae96b2fbfe",
+        "created_at": "2026-11-16T18:59:35.742Z"
+      },
+      {
+        "plan_version": 1,
+        "step_id": "553a3980-1059-4cbc-a566-754fafa5b23c",
+        "attempt_id": "pilot-b-cli-help-repair",
+        "outcome": "passed",
+        "output": "Reproduced pre-fix claim/artifact --help returning generic help. Built CLI now returns registry-generated input-mode JSON Schema, required caller fields, optional defaults/bounds, --key retry guidance and automatic lease custody. Six focused subprocess tests passed, including all registered operations, nested defaults, missing credential/input files, global/admin help and unknown command rejection. Existing three tests, build, typecheck and focused formatting passed. Real CLI artifact-add used only displayed public fields with key pilot-b-cli-help-use and succeeded. MCP read before/after claim/artifact help observed revision 10 unchanged. Agent A failure remains preserved; independent recovery and C verification remain pending.",
+        "provenance": "local-pilot://agent-b/built-cli",
+        "submitted_by": "37d55f57-fb2e-4603-bcb0-e2ae96b2fbfe",
+        "created_at": "2026-11-16T19:01:44.435Z"
+      },
+      {
+        "plan_version": 1,
+        "step_id": "553a3980-1059-4cbc-a566-754fafa5b23c",
+        "attempt_id": "pilot-c-source-usable_cli",
+        "outcome": "passed",
+        "output": "Independently used built claim/artifact help without TypeScript; all 6 focused subprocess tests passed. Global help passed; nonexistent config/input operation help passed; unknown operation expected exit 1. Work revision stayed 13 across help. MCP claim then CLI artifact write using same recovered credential succeeded, read back via MCP. Fresh MCP discovery after correction accurately marked defaults optional; work_get id-only and work_list empty object succeeded. Initial schema mismatch is preserved in report. Reconciled as new evidence to canonical source; no database state overwrite.",
+        "provenance": "local-pilot://agent-c/recovery",
+        "submitted_by": "1d2c08a2-5cc4-4c03-aa82-7aa3948926bd",
+        "created_at": "2026-11-16T19:08:15.678Z"
+      },
+      {
+        "plan_version": 1,
+        "step_id": "380114ad-093b-4c66-bc3a-5da8be3c8849",
+        "attempt_id": "pilot-c-source-handoff",
+        "outcome": "passed",
+        "output": "Agent C began with restored work_get, then retrieved linked project/authority note and all three A/B pre-snapshot artifacts through real MCP. Their content, IDs/digests and A failed attempt survived. Instructions and reproduction were derived from durable records, not A/B chat. Source latest B stale-lease report also read before source claim. Reconciled as new evidence to canonical source; no database state overwrite.",
+        "provenance": "local-pilot://agent-c/recovery",
+        "submitted_by": "1d2c08a2-5cc4-4c03-aa82-7aa3948926bd",
+        "created_at": "2026-11-16T19:08:16.126Z"
+      },
+      {
+        "plan_version": 1,
+        "step_id": "6ec7c666-e932-4695-b5c5-27ce58c55b16",
+        "attempt_id": "pilot-c-source-recovery",
+        "outcome": "passed",
+        "output": "Fresh recovered service at http://127.0.0.1:8089 exposed prior records and restore invalidation epoch 3. New pilot-c-recovery-claim yielded epoch 4; start succeeded. Same protected credential used by real CLI to add useful artifact 38099b57-28d6-4970-947f-654b6af5d74d, read back intact via MCP, digest 2c8b3ab240a597ee37a9ebfb12d53205e304a24a0e116a173978f6bbf7e1ef30. Independently proves resumed behavior. Root table-hash receipt is supporting reported evidence, not C-executed SQL. Canonical remains :8088; source new pilot-c-source-claim independently yielded epoch 3. A failure remains preserved. Reconciled as new evidence to canonical source; no database state overwrite.",
+        "provenance": "local-pilot://agent-c/recovery",
+        "submitted_by": "1d2c08a2-5cc4-4c03-aa82-7aa3948926bd",
+        "created_at": "2026-11-16T19:08:16.573Z"
+      }
+    ],
+    "artifacts": [
+      {
+        "id": "09a90e3a-9246-4f90-aa47-1f1926866819",
+        "name": "agent-a-cli-discovery-handoff.md",
+        "media_type": "text/markdown",
+        "digest": "5a273de7e471daac50fba417da21732efac070371aa8b1cd3cd86f5bfcd862af",
+        "plan_version": 1,
+        "created_at": "2026-11-16T18:57:55.265Z"
+      },
+      {
+        "id": "69461719-6e42-4c17-961c-15a721a5a233",
+        "name": "agent-b-cli-help-use.md",
+        "media_type": "text/markdown",
+        "digest": "2a28d9cefabadf006a09f0b3d71251aa553a49de2fde79eede094a24f39e08bc",
+        "plan_version": 1,
+        "created_at": "2026-11-16T19:01:25.382Z"
+      },
+      {
+        "id": "cc6a0a85-7d56-4b2f-9625-d550e9885670",
+        "name": "agent-b-cli-help-repair-handoff.md",
+        "media_type": "text/markdown",
+        "digest": "f991f880470bf36ba1de4cbc981e84e1916871085a7f2aaa52038f9e8d3fcea6",
+        "plan_version": 1,
+        "created_at": "2026-11-16T19:02:20.478Z"
+      },
+      {
+        "id": "55bdcc9b-a31a-4e89-b471-bb647be93f86",
+        "name": "agent-b-recovery-stale-lease.md",
+        "media_type": "text/markdown",
+        "digest": "d9482cd3140ad2538f3b95a7b0c697e706b29f848bce5206c3608411d787a194",
+        "plan_version": 1,
+        "created_at": "2026-11-16T19:04:16.649Z"
+      },
+      {
+        "id": "27138352-92c1-49c1-833a-8b9edcbf208c",
+        "name": "agent-c-source-recovery-handoff.md",
+        "media_type": "text/markdown",
+        "digest": "208901c8c7742fe6485e7a4d6a7f9134138abf573923a94c72f4067590f4561c",
+        "plan_version": 1,
+        "created_at": "2026-11-16T19:08:15.267Z"
+      }
+    ],
+    "history": [
+      {
+        "event": "created",
+        "actor": "d4c9846d-3a97-4373-a02d-15acff87aa56",
+        "detail": {},
+        "created_at": "2026-11-16T18:55:52.492Z"
+      },
+      {
+        "event": "work.claim",
+        "actor": "9cbe3f27-c4d8-4bdc-8326-0151d6a7cb4c",
+        "detail": {
+          "planVersion": 1
+        },
+        "created_at": "2026-11-16T18:57:01.769Z"
+      },
+      {
+        "event": "work.start",
+        "actor": "9cbe3f27-c4d8-4bdc-8326-0151d6a7cb4c",
+        "detail": {
+          "planVersion": 1
+        },
+        "created_at": "2026-11-16T18:57:06.556Z"
+      },
+      {
+        "event": "work.artifacts.add",
+        "actor": "9cbe3f27-c4d8-4bdc-8326-0151d6a7cb4c",
+        "detail": {
+          "planVersion": 1
+        },
+        "created_at": "2026-11-16T18:57:55.273Z"
+      },
+      {
+        "event": "work.evidence",
+        "actor": "9cbe3f27-c4d8-4bdc-8326-0151d6a7cb4c",
+        "detail": {
+          "planVersion": 1
+        },
+        "created_at": "2026-11-16T18:58:02.390Z"
+      },
+      {
+        "event": "work.release",
+        "actor": "9cbe3f27-c4d8-4bdc-8326-0151d6a7cb4c",
+        "detail": {
+          "planVersion": 1
+        },
+        "created_at": "2026-11-16T18:58:07.080Z"
+      },
+      {
+        "event": "work.claim",
+        "actor": "37d55f57-fb2e-4603-bcb0-e2ae96b2fbfe",
+        "detail": {
+          "planVersion": 1
+        },
+        "created_at": "2026-11-16T18:59:35.006Z"
+      },
+      {
+        "event": "work.start",
+        "actor": "37d55f57-fb2e-4603-bcb0-e2ae96b2fbfe",
+        "detail": {
+          "planVersion": 1
+        },
+        "created_at": "2026-11-16T18:59:35.383Z"
+      },
+      {
+        "event": "work.evidence",
+        "actor": "37d55f57-fb2e-4603-bcb0-e2ae96b2fbfe",
+        "detail": {
+          "planVersion": 1
+        },
+        "created_at": "2026-11-16T18:59:35.746Z"
+      },
+      {
+        "event": "work.artifacts.add",
+        "actor": "37d55f57-fb2e-4603-bcb0-e2ae96b2fbfe",
+        "detail": {
+          "planVersion": 1
+        },
+        "created_at": "2026-11-16T19:01:25.393Z"
+      },
+      {
+        "event": "work.evidence",
+        "actor": "37d55f57-fb2e-4603-bcb0-e2ae96b2fbfe",
+        "detail": {
+          "planVersion": 1
+        },
+        "created_at": "2026-11-16T19:01:44.438Z"
+      },
+      {
+        "event": "work.artifacts.add",
+        "actor": "37d55f57-fb2e-4603-bcb0-e2ae96b2fbfe",
+        "detail": {
+          "planVersion": 1
+        },
+        "created_at": "2026-11-16T19:02:20.485Z"
+      },
+      {
+        "event": "work.artifacts.add",
+        "actor": "37d55f57-fb2e-4603-bcb0-e2ae96b2fbfe",
+        "detail": {
+          "planVersion": 1
+        },
+        "created_at": "2026-11-16T19:04:16.656Z"
+      },
+      {
+        "event": "work.release",
+        "actor": "37d55f57-fb2e-4603-bcb0-e2ae96b2fbfe",
+        "detail": {
+          "planVersion": 1
+        },
+        "created_at": "2026-11-16T19:04:16.988Z"
+      },
+      {
+        "event": "work.claim",
+        "actor": "1d2c08a2-5cc4-4c03-aa82-7aa3948926bd",
+        "detail": {
+          "planVersion": 1
+        },
+        "created_at": "2026-11-16T19:07:31.232Z"
+      },
+      {
+        "event": "work.start",
+        "actor": "1d2c08a2-5cc4-4c03-aa82-7aa3948926bd",
+        "detail": {
+          "planVersion": 1
+        },
+        "created_at": "2026-11-16T19:07:31.481Z"
+      },
+      {
+        "event": "work.artifacts.add",
+        "actor": "1d2c08a2-5cc4-4c03-aa82-7aa3948926bd",
+        "detail": {
+          "planVersion": 1
+        },
+        "created_at": "2026-11-16T19:08:15.284Z"
+      },
+      {
+        "event": "work.evidence",
+        "actor": "1d2c08a2-5cc4-4c03-aa82-7aa3948926bd",
+        "detail": {
+          "planVersion": 1
+        },
+        "created_at": "2026-11-16T19:08:15.682Z"
+      },
+      {
+        "event": "work.evidence",
+        "actor": "1d2c08a2-5cc4-4c03-aa82-7aa3948926bd",
+        "detail": {
+          "planVersion": 1
+        },
+        "created_at": "2026-11-16T19:08:16.129Z"
+      },
+      {
+        "event": "work.evidence",
+        "actor": "1d2c08a2-5cc4-4c03-aa82-7aa3948926bd",
+        "detail": {
+          "planVersion": 1
+        },
+        "created_at": "2026-11-16T19:08:16.574Z"
+      },
+      {
+        "event": "work.review",
+        "actor": "1d2c08a2-5cc4-4c03-aa82-7aa3948926bd",
+        "detail": {
+          "planVersion": 1
+        },
+        "created_at": "2026-11-16T19:08:16.853Z"
+      },
+      {
+        "event": "work.accept",
+        "actor": "d4c9846d-3a97-4373-a02d-15acff87aa56",
+        "detail": {
+          "planVersion": 1
+        },
+        "created_at": "2026-11-16T19:13:48.281Z"
+      }
+    ]
+  },
+  "followupWork": {
+    "id": "9eaa6edb-7025-4e44-bc48-d6b63c628a8b",
+    "status": "done",
+    "epoch": 1,
+    "revision": 7,
+    "plan_version": 1,
+    "accepted_by": "d4c9846d-3a97-4373-a02d-15acff87aa56",
+    "accepted_plan_version": 1,
+    "coverage": {
+      "state": "commands_passed",
+      "required": 1,
+      "covered": 1,
+      "passed": 1,
+      "missingStepIds": [],
+      "failedStepIds": [],
+      "steps": [
+        {
+          "step": {
+            "id": "fad16741-ced5-4596-b4f2-1c5eca14d777",
+            "key": "artifact_receipt",
+            "title": "Artifact receipt supports direct retrieval and stable replay without a list lookup",
+            "required": true
+          },
+          "latestAttempt": {
+            "stepId": "fad16741-ced5-4596-b4f2-1c5eca14d777",
+            "outcome": "passed",
+            "ranAt": "2026-11-16T19:13:19.073Z",
+            "createdAt": "2026-11-16T19:13:19.073Z",
+            "sequence": 7
+          },
+          "covered": true,
+          "passed": true
+        }
+      ]
+    },
+    "evidence": [
+      {
+        "plan_version": 1,
+        "step_id": "fad16741-ced5-4596-b4f2-1c5eca14d777",
+        "attempt_id": "pilot-c-artifact-receipt",
+        "outcome": "passed",
+        "output": "Independent source verification at http://127.0.0.1:8088. C read followup plan 1, MCP claimed/started epoch 1, then real CLI work.artifacts.add with key pilot-c-artifact-receipt-write returned work id plus artifactId a200a857-09ff-4e78-a1b9-8ce66fe88cda, revision 4. MCP work_artifacts_get used that returned ID directly before any artifact list lookup; content matched and digest 18da7de126eed9227af9a071d324c20270fd7cb11f3846b6f851d0b64ab35be3. Identical CLI replay twice retained semantically identical whole receipt, same artifactId/revision. Initial byte/order-sensitive JSON comparison differed because object key order changed; canonicalized full JSON comparison passed. Changed content with same key exited 1: Idempotency key was already used with different input. Subsequent work_get remained revision 4 with exactly one artifact and one artifact creation event carrying artifactId. Direct MCP retrieval confirmed original content/digest unchanged. No list operation was used. Original main pilot/report untouched. This independently verifies focused correction; root packaged acceptance is separate reported evidence.",
+        "provenance": "local-pilot://agent-c/artifact-receipt",
+        "submitted_by": "1d2c08a2-5cc4-4c03-aa82-7aa3948926bd",
+        "created_at": "2026-11-16T19:13:19.073Z"
+      }
+    ],
+    "artifacts": [
+      {
+        "id": "a200a857-09ff-4e78-a1b9-8ce66fe88cda",
+        "name": "agent-c-direct-artifact-receipt.md",
+        "media_type": "text/markdown",
+        "digest": "18da7de126eed9227af9a071d324c20270fd7cb11f3846b6f851d0b64ab35be3",
+        "plan_version": 1,
+        "created_at": "2026-11-16T19:12:34.978Z"
+      }
+    ],
+    "history": [
+      {
+        "event": "created",
+        "actor": "d4c9846d-3a97-4373-a02d-15acff87aa56",
+        "detail": {},
+        "created_at": "2026-11-16T19:10:22.448Z"
+      },
+      {
+        "event": "work.claim",
+        "actor": "1d2c08a2-5cc4-4c03-aa82-7aa3948926bd",
+        "detail": {
+          "planVersion": 1
+        },
+        "created_at": "2026-11-16T19:12:34.363Z"
+      },
+      {
+        "event": "work.start",
+        "actor": "1d2c08a2-5cc4-4c03-aa82-7aa3948926bd",
+        "detail": {
+          "planVersion": 1
+        },
+        "created_at": "2026-11-16T19:12:34.800Z"
+      },
+      {
+        "event": "work.artifacts.add",
+        "actor": "1d2c08a2-5cc4-4c03-aa82-7aa3948926bd",
+        "detail": {
+          "artifactId": "a200a857-09ff-4e78-a1b9-8ce66fe88cda",
+          "planVersion": 1
+        },
+        "created_at": "2026-11-16T19:12:34.983Z"
+      },
+      {
+        "event": "work.evidence",
+        "actor": "1d2c08a2-5cc4-4c03-aa82-7aa3948926bd",
+        "detail": {
+          "planVersion": 1
+        },
+        "created_at": "2026-11-16T19:13:19.079Z"
+      },
+      {
+        "event": "work.review",
+        "actor": "1d2c08a2-5cc4-4c03-aa82-7aa3948926bd",
+        "detail": {
+          "planVersion": 1
+        },
+        "created_at": "2026-11-16T19:13:19.483Z"
+      },
+      {
+        "event": "work.accept",
+        "actor": "d4c9846d-3a97-4373-a02d-15acff87aa56",
+        "detail": {
+          "planVersion": 1
+        },
+        "created_at": "2026-11-16T19:13:48.390Z"
+      }
+    ]
+  },
+  "recoveredWork": {
+    "id": "b3cbe36c-07cd-44ae-ab26-cd76ed458668",
+    "status": "needs_review",
+    "epoch": 4,
+    "revision": 22,
+    "plan_version": 1,
+    "accepted_by": null,
+    "accepted_plan_version": null,
+    "coverage": {
+      "state": "commands_passed",
+      "required": 3,
+      "covered": 3,
+      "passed": 3,
+      "missingStepIds": [],
+      "failedStepIds": [],
+      "steps": [
+        {
+          "step": {
+            "id": "553a3980-1059-4cbc-a566-754fafa5b23c",
+            "key": "usable_cli",
+            "title": "Required operation input can be discovered and used without reading TypeScript",
+            "required": true
+          },
+          "latestAttempt": {
+            "stepId": "553a3980-1059-4cbc-a566-754fafa5b23c",
+            "outcome": "passed",
+            "ranAt": "2026-11-16T19:07:53.411Z",
+            "createdAt": "2026-11-16T19:07:53.411Z",
+            "sequence": 4
+          },
+          "covered": true,
+          "passed": true
+        },
+        {
+          "step": {
+            "id": "380114ad-093b-4c66-bc3a-5da8be3c8849",
+            "key": "handoff",
+            "title": "Independent successor retrieved persisted context and prior findings through MCP",
+            "required": true
+          },
+          "latestAttempt": {
+            "stepId": "380114ad-093b-4c66-bc3a-5da8be3c8849",
+            "outcome": "passed",
+            "ranAt": "2026-11-16T19:07:53.678Z",
+            "createdAt": "2026-11-16T19:07:53.678Z",
+            "sequence": 5
+          },
+          "covered": true,
+          "passed": true
+        },
+        {
+          "step": {
+            "id": "6ec7c666-e932-4695-b5c5-27ce58c55b16",
+            "key": "recovery",
+            "title": "Fresh database restores prior records and a third agent continues through MCP",
+            "required": true
+          },
+          "latestAttempt": {
+            "stepId": "6ec7c666-e932-4695-b5c5-27ce58c55b16",
+            "outcome": "passed",
+            "ranAt": "2026-11-16T19:07:53.945Z",
+            "createdAt": "2026-11-16T19:07:53.945Z",
+            "sequence": 6
+          },
+          "covered": true,
+          "passed": true
+        }
+      ]
+    },
+    "evidence": [
+      {
+        "plan_version": 1,
+        "step_id": "553a3980-1059-4cbc-a566-754fafa5b23c",
+        "attempt_id": "pilot-a-discovery",
+        "outcome": "failed",
+        "output": "README plus global/operation --help, catalog and schema.inspect did not disclose complete caller input schemas. work.claim --help and work.artifacts.add --help both exit 0 with generic global help. Successful authenticated reads and claim/start prove service and credentials work. Actual mutation fields came from private task instructions, not discovery. Durable Markdown handoff records exact reproduction and repair acceptance.",
+        "provenance": "local-pilot://agent-a",
+        "submitted_by": "9cbe3f27-c4d8-4bdc-8326-0151d6a7cb4c",
+        "created_at": "2026-11-16T18:58:02.387Z"
+      },
+      {
+        "plan_version": 1,
+        "step_id": "380114ad-093b-4c66-bc3a-5da8be3c8849",
+        "attempt_id": "pilot-b-mcp-handoff",
+        "outcome": "passed",
+        "output": "Agent B first retrieved work_get through the real MCP executable, then independently retrieved linked project cede87ab-2050-4760-8548-4d1b4877e697, authority note b9d25efe-f86d-4f8b-b450-2ce50d7620d3 and A artifact 09a90e3a-9246-4f90-aa47-1f1926866819 through projects_get, notes_get and work_artifacts_get. Read the persisted reproduction and acceptance controls before investigating source. Work was queued and claimable after A release; claimed with pilot-b-claim and started.",
+        "provenance": "local-pilot://agent-b/mcp",
+        "submitted_by": "37d55f57-fb2e-4603-bcb0-e2ae96b2fbfe",
+        "created_at": "2026-11-16T18:59:35.742Z"
+      },
+      {
+        "plan_version": 1,
+        "step_id": "553a3980-1059-4cbc-a566-754fafa5b23c",
+        "attempt_id": "pilot-b-cli-help-repair",
+        "outcome": "passed",
+        "output": "Reproduced pre-fix claim/artifact --help returning generic help. Built CLI now returns registry-generated input-mode JSON Schema, required caller fields, optional defaults/bounds, --key retry guidance and automatic lease custody. Six focused subprocess tests passed, including all registered operations, nested defaults, missing credential/input files, global/admin help and unknown command rejection. Existing three tests, build, typecheck and focused formatting passed. Real CLI artifact-add used only displayed public fields with key pilot-b-cli-help-use and succeeded. MCP read before/after claim/artifact help observed revision 10 unchanged. Agent A failure remains preserved; independent recovery and C verification remain pending.",
+        "provenance": "local-pilot://agent-b/built-cli",
+        "submitted_by": "37d55f57-fb2e-4603-bcb0-e2ae96b2fbfe",
+        "created_at": "2026-11-16T19:01:44.435Z"
+      },
+      {
+        "plan_version": 1,
+        "step_id": "553a3980-1059-4cbc-a566-754fafa5b23c",
+        "attempt_id": "pilot-c-recovery-usable_cli",
+        "outcome": "passed",
+        "output": "Independently used built claim/artifact help without TypeScript; all 6 focused subprocess tests passed. Global help passed; nonexistent config/input operation help passed; unknown operation expected exit 1. Work revision stayed 13 across help. MCP claim then CLI artifact write using same recovered credential succeeded, read back via MCP. Fresh MCP discovery after correction accurately marked defaults optional; work_get id-only and work_list empty object succeeded. Initial schema mismatch is preserved in report.",
+        "provenance": "local-pilot://agent-c/recovery",
+        "submitted_by": "1d2c08a2-5cc4-4c03-aa82-7aa3948926bd",
+        "created_at": "2026-11-16T19:07:53.411Z"
+      },
+      {
+        "plan_version": 1,
+        "step_id": "380114ad-093b-4c66-bc3a-5da8be3c8849",
+        "attempt_id": "pilot-c-recovery-handoff",
+        "outcome": "passed",
+        "output": "Agent C began with restored work_get, then retrieved linked project/authority note and all three A/B pre-snapshot artifacts through real MCP. Their content, IDs/digests and A failed attempt survived. Instructions and reproduction were derived from durable records, not A/B chat. Source latest B stale-lease report also read before source claim.",
+        "provenance": "local-pilot://agent-c/recovery",
+        "submitted_by": "1d2c08a2-5cc4-4c03-aa82-7aa3948926bd",
+        "created_at": "2026-11-16T19:07:53.678Z"
+      },
+      {
+        "plan_version": 1,
+        "step_id": "6ec7c666-e932-4695-b5c5-27ce58c55b16",
+        "attempt_id": "pilot-c-recovery-recovery",
+        "outcome": "passed",
+        "output": "Fresh recovered service at http://127.0.0.1:8089 exposed prior records and restore invalidation epoch 3. New pilot-c-recovery-claim yielded epoch 4; start succeeded. Same protected credential used by real CLI to add useful artifact 38099b57-28d6-4970-947f-654b6af5d74d, read back intact via MCP, digest 2c8b3ab240a597ee37a9ebfb12d53205e304a24a0e116a173978f6bbf7e1ef30. Independently proves resumed behavior. Root table-hash receipt is supporting reported evidence, not C-executed SQL. Canonical remains :8088; source new pilot-c-source-claim independently yielded epoch 3. A failure remains preserved.",
+        "provenance": "local-pilot://agent-c/recovery",
+        "submitted_by": "1d2c08a2-5cc4-4c03-aa82-7aa3948926bd",
+        "created_at": "2026-11-16T19:07:53.945Z"
+      }
+    ],
+    "artifacts": [
+      {
+        "id": "09a90e3a-9246-4f90-aa47-1f1926866819",
+        "name": "agent-a-cli-discovery-handoff.md",
+        "media_type": "text/markdown",
+        "digest": "5a273de7e471daac50fba417da21732efac070371aa8b1cd3cd86f5bfcd862af",
+        "plan_version": 1,
+        "created_at": "2026-11-16T18:57:55.265Z"
+      },
+      {
+        "id": "69461719-6e42-4c17-961c-15a721a5a233",
+        "name": "agent-b-cli-help-use.md",
+        "media_type": "text/markdown",
+        "digest": "2a28d9cefabadf006a09f0b3d71251aa553a49de2fde79eede094a24f39e08bc",
+        "plan_version": 1,
+        "created_at": "2026-11-16T19:01:25.382Z"
+      },
+      {
+        "id": "cc6a0a85-7d56-4b2f-9625-d550e9885670",
+        "name": "agent-b-cli-help-repair-handoff.md",
+        "media_type": "text/markdown",
+        "digest": "f991f880470bf36ba1de4cbc981e84e1916871085a7f2aaa52038f9e8d3fcea6",
+        "plan_version": 1,
+        "created_at": "2026-11-16T19:02:20.478Z"
+      },
+      {
+        "id": "38099b57-28d6-4970-947f-654b6af5d74d",
+        "name": "agent-c-recovered-cli-use.md",
+        "media_type": "text/markdown",
+        "digest": "2c8b3ab240a597ee37a9ebfb12d53205e304a24a0e116a173978f6bbf7e1ef30",
+        "plan_version": 1,
+        "created_at": "2026-11-16T19:05:49.870Z"
+      },
+      {
+        "id": "2a3c396d-780b-4e3f-a988-0f49fd3cbb0b",
+        "name": "agent-c-recovery-verification.md",
+        "media_type": "text/markdown",
+        "digest": "55a5aec21e3cc6349cda72dbd03b22bc9479970bd405523a70d3df60baf6c3cb",
+        "plan_version": 1,
+        "created_at": "2026-11-16T19:06:55.826Z"
+      },
+      {
+        "id": "223ddacc-f95d-4532-8641-962cfda7f4f9",
+        "name": "agent-c-mcp-discovery-correction.md",
+        "media_type": "text/markdown",
+        "digest": "c5a158b5d8ad9c8743fed0641ad3cfaf53473c5f22e7bad6f65caa8576023bdb",
+        "plan_version": 1,
+        "created_at": "2026-11-16T19:07:31.742Z"
+      }
+    ],
+    "history": [
+      {
+        "event": "created",
+        "actor": "d4c9846d-3a97-4373-a02d-15acff87aa56",
+        "detail": {},
+        "created_at": "2026-11-16T18:55:52.492Z"
+      },
+      {
+        "event": "work.claim",
+        "actor": "9cbe3f27-c4d8-4bdc-8326-0151d6a7cb4c",
+        "detail": {
+          "planVersion": 1
+        },
+        "created_at": "2026-11-16T18:57:01.769Z"
+      },
+      {
+        "event": "work.start",
+        "actor": "9cbe3f27-c4d8-4bdc-8326-0151d6a7cb4c",
+        "detail": {
+          "planVersion": 1
+        },
+        "created_at": "2026-11-16T18:57:06.556Z"
+      },
+      {
+        "event": "work.artifacts.add",
+        "actor": "9cbe3f27-c4d8-4bdc-8326-0151d6a7cb4c",
+        "detail": {
+          "planVersion": 1
+        },
+        "created_at": "2026-11-16T18:57:55.273Z"
+      },
+      {
+        "event": "work.evidence",
+        "actor": "9cbe3f27-c4d8-4bdc-8326-0151d6a7cb4c",
+        "detail": {
+          "planVersion": 1
+        },
+        "created_at": "2026-11-16T18:58:02.390Z"
+      },
+      {
+        "event": "work.release",
+        "actor": "9cbe3f27-c4d8-4bdc-8326-0151d6a7cb4c",
+        "detail": {
+          "planVersion": 1
+        },
+        "created_at": "2026-11-16T18:58:07.080Z"
+      },
+      {
+        "event": "work.claim",
+        "actor": "37d55f57-fb2e-4603-bcb0-e2ae96b2fbfe",
+        "detail": {
+          "planVersion": 1
+        },
+        "created_at": "2026-11-16T18:59:35.006Z"
+      },
+      {
+        "event": "work.start",
+        "actor": "37d55f57-fb2e-4603-bcb0-e2ae96b2fbfe",
+        "detail": {
+          "planVersion": 1
+        },
+        "created_at": "2026-11-16T18:59:35.383Z"
+      },
+      {
+        "event": "work.evidence",
+        "actor": "37d55f57-fb2e-4603-bcb0-e2ae96b2fbfe",
+        "detail": {
+          "planVersion": 1
+        },
+        "created_at": "2026-11-16T18:59:35.746Z"
+      },
+      {
+        "event": "work.artifacts.add",
+        "actor": "37d55f57-fb2e-4603-bcb0-e2ae96b2fbfe",
+        "detail": {
+          "planVersion": 1
+        },
+        "created_at": "2026-11-16T19:01:25.393Z"
+      },
+      {
+        "event": "work.evidence",
+        "actor": "37d55f57-fb2e-4603-bcb0-e2ae96b2fbfe",
+        "detail": {
+          "planVersion": 1
+        },
+        "created_at": "2026-11-16T19:01:44.438Z"
+      },
+      {
+        "event": "work.artifacts.add",
+        "actor": "37d55f57-fb2e-4603-bcb0-e2ae96b2fbfe",
+        "detail": {
+          "planVersion": 1
+        },
+        "created_at": "2026-11-16T19:02:20.485Z"
+      },
+      {
+        "event": "restore.lease_invalidated",
+        "actor": "37d55f57-fb2e-4603-bcb0-e2ae96b2fbfe",
+        "detail": {
+          "reason": "Restored into a new database; claim again with a new request key"
+        },
+        "created_at": "2026-11-16T19:03:06.000Z"
+      },
+      {
+        "event": "work.claim",
+        "actor": "1d2c08a2-5cc4-4c03-aa82-7aa3948926bd",
+        "detail": {
+          "planVersion": 1
+        },
+        "created_at": "2026-11-16T19:05:49.323Z"
+      },
+      {
+        "event": "work.start",
+        "actor": "1d2c08a2-5cc4-4c03-aa82-7aa3948926bd",
+        "detail": {
+          "planVersion": 1
+        },
+        "created_at": "2026-11-16T19:05:49.655Z"
+      },
+      {
+        "event": "work.artifacts.add",
+        "actor": "1d2c08a2-5cc4-4c03-aa82-7aa3948926bd",
+        "detail": {
+          "planVersion": 1
+        },
+        "created_at": "2026-11-16T19:05:49.880Z"
+      },
+      {
+        "event": "work.artifacts.add",
+        "actor": "1d2c08a2-5cc4-4c03-aa82-7aa3948926bd",
+        "detail": {
+          "planVersion": 1
+        },
+        "created_at": "2026-11-16T19:06:55.833Z"
+      },
+      {
+        "event": "work.artifacts.add",
+        "actor": "1d2c08a2-5cc4-4c03-aa82-7aa3948926bd",
+        "detail": {
+          "planVersion": 1
+        },
+        "created_at": "2026-11-16T19:07:31.746Z"
+      },
+      {
+        "event": "work.evidence",
+        "actor": "1d2c08a2-5cc4-4c03-aa82-7aa3948926bd",
+        "detail": {
+          "planVersion": 1
+        },
+        "created_at": "2026-11-16T19:07:53.413Z"
+      },
+      {
+        "event": "work.evidence",
+        "actor": "1d2c08a2-5cc4-4c03-aa82-7aa3948926bd",
+        "detail": {
+          "planVersion": 1
+        },
+        "created_at": "2026-11-16T19:07:53.678Z"
+      },
+      {
+        "event": "work.evidence",
+        "actor": "1d2c08a2-5cc4-4c03-aa82-7aa3948926bd",
+        "detail": {
+          "planVersion": 1
+        },
+        "created_at": "2026-11-16T19:07:53.946Z"
+      },
+      {
+        "event": "work.review",
+        "actor": "1d2c08a2-5cc4-4c03-aa82-7aa3948926bd",
+        "detail": {
+          "planVersion": 1
+        },
+        "created_at": "2026-11-16T19:07:54.218Z"
+      }
+    ]
+  },
+  "artifactsVerified": [
+    {
+      "id": "09a90e3a-9246-4f90-aa47-1f1926866819",
+      "name": "agent-a-cli-discovery-handoff.md",
+      "media_type": "text/markdown",
+      "digest": "5a273de7e471daac50fba417da21732efac070371aa8b1cd3cd86f5bfcd862af",
+      "plan_version": 1,
+      "created_at": "2026-11-16T18:57:55.265Z",
+      "workId": "b3cbe36c-07cd-44ae-ab26-cd76ed458668"
+    },
+    {
+      "id": "69461719-6e42-4c17-961c-15a721a5a233",
+      "name": "agent-b-cli-help-use.md",
+      "media_type": "text/markdown",
+      "digest": "2a28d9cefabadf006a09f0b3d71251aa553a49de2fde79eede094a24f39e08bc",
+      "plan_version": 1,
+      "created_at": "2026-11-16T19:01:25.382Z",
+      "workId": "b3cbe36c-07cd-44ae-ab26-cd76ed458668"
+    },
+    {
+      "id": "cc6a0a85-7d56-4b2f-9625-d550e9885670",
+      "name": "agent-b-cli-help-repair-handoff.md",
+      "media_type": "text/markdown",
+      "digest": "f991f880470bf36ba1de4cbc981e84e1916871085a7f2aaa52038f9e8d3fcea6",
+      "plan_version": 1,
+      "created_at": "2026-11-16T19:02:20.478Z",
+      "workId": "b3cbe36c-07cd-44ae-ab26-cd76ed458668"
+    },
+    {
+      "id": "55bdcc9b-a31a-4e89-b471-bb647be93f86",
+      "name": "agent-b-recovery-stale-lease.md",
+      "media_type": "text/markdown",
+      "digest": "d9482cd3140ad2538f3b95a7b0c697e706b29f848bce5206c3608411d787a194",
+      "plan_version": 1,
+      "created_at": "2026-11-16T19:04:16.649Z",
+      "workId": "b3cbe36c-07cd-44ae-ab26-cd76ed458668"
+    },
+    {
+      "id": "27138352-92c1-49c1-833a-8b9edcbf208c",
+      "name": "agent-c-source-recovery-handoff.md",
+      "media_type": "text/markdown",
+      "digest": "208901c8c7742fe6485e7a4d6a7f9134138abf573923a94c72f4067590f4561c",
+      "plan_version": 1,
+      "created_at": "2026-11-16T19:08:15.267Z",
+      "workId": "b3cbe36c-07cd-44ae-ab26-cd76ed458668"
+    },
+    {
+      "id": "a200a857-09ff-4e78-a1b9-8ce66fe88cda",
+      "name": "agent-c-direct-artifact-receipt.md",
+      "media_type": "text/markdown",
+      "digest": "18da7de126eed9227af9a071d324c20270fd7cb11f3846b6f851d0b64ab35be3",
+      "plan_version": 1,
+      "created_at": "2026-11-16T19:12:34.978Z",
+      "workId": "9eaa6edb-7025-4e44-bc48-d6b63c628a8b"
+    }
+  ],
+  "recovery": {
+    "backup": {
+      "backup": "/run/sift/pilot-20261116/backup",
+      "sha256": "491bc2c5b7f5209b9accb4ed879f35b3178087ce5f70c6c7b3b2006c5c3b7457",
+      "modules": [
+        "context",
+        "extensions",
+        "foundation",
+        "planning",
+        "projects",
+        "work"
+      ],
+      "tables": 23,
+      "rows": 96
+    },
+    "verified": {
+      "verified": true,
+      "sha256": "491bc2c5b7f5209b9accb4ed879f35b3178087ce5f70c6c7b3b2006c5c3b7457",
+      "modules": [
+        "context",
+        "extensions",
+        "foundation",
+        "planning",
+        "projects",
+        "work"
+      ],
+      "tables": 23
+    },
+    "recovery": {
+      "database": "siftable_pilot_20261116",
+      "integrity": "verified",
+      "modules": [
+        "context",
+        "extensions",
+        "foundation",
+        "planning",
+        "projects",
+        "work"
+      ],
+      "tables": 23,
+      "invalidatedLeases": 1,
+      "credentials": "Existing protected credential files can be repointed, or issue new credentials for the restored owner/scope"
+    },
+    "container": "siftable-pilot-recovery-20261116",
+    "sourceUrl": "http://127.0.0.1:8088",
+    "recoveryUrl": "http://127.0.0.1:8089",
+    "sourceEpoch": 2,
+    "sourceStatus": "running",
+    "snapshotPhase": "B active after CLI help repair; before later MCP schema and artifact receipt corrections",
+    "comparison": {
+      "verified": true,
+      "projectId": "cede87ab-2050-4760-8548-4d1b4877e697",
+      "workId": "b3cbe36c-07cd-44ae-ab26-cd76ed458668",
+      "priorEvidence": 3,
+      "priorArtifacts": 3,
+      "sourceEpoch": 2,
+      "recoveredEpoch": 3,
+      "restoreEvent": {
+        "event": "restore.lease_invalidated",
+        "actor": "37d55f57-fb2e-4603-bcb0-e2ae96b2fbfe",
+        "detail": {
+          "reason": "Restored into a new database; claim again with a new request key"
+        },
+        "created_at": "2026-11-16T19:03:06.000Z"
+      },
+      "fieldsCompared": [
+        "project",
+        "note",
+        "plan",
+        "plans",
+        "links",
+        "dependencies",
+        "evidence",
+        "artifacts",
+        "coverage",
+        "history-prefix"
+      ]
+    }
+  },
+  "cleanup": {
+    "revoked": [
+      {
+        "agent": "agent-a",
+        "principalId": "9cbe3f27-c4d8-4bdc-8326-0151d6a7cb4c",
+        "source": true,
+        "recovered": true
+      },
+      {
+        "agent": "agent-b",
+        "principalId": "37d55f57-fb2e-4603-bcb0-e2ae96b2fbfe",
+        "source": true,
+        "recovered": true
+      },
+      {
+        "agent": "agent-c",
+        "principalId": "1d2c08a2-5cc4-4c03-aa82-7aa3948926bd",
+        "source": true,
+        "recovered": true
+      }
+    ],
+    "finalBackup": {
+      "backup": "/run/sift/pilot-20261116/backup-complete",
+      "sha256": "23cc5732e5b3b68613626e5df9728c47531ada130b703e0e5d4c1a5a8ae92f99",
+      "modules": [
+        "context",
+        "extensions",
+        "foundation",
+        "planning",
+        "projects",
+        "work"
+      ],
+      "tables": 23,
+      "rows": 163
+    },
+    "sourceServiceAvailable": true,
+    "recoveryServerStopped": true,
+    "recoveredDatabaseRetained": true,
+    "sourceDatabase": "siftable",
+    "recoveredDatabase": "siftable_pilot_20261116",
+    "imageId": "sha256:591c175d369236234f1415aa637df92a394163e5db99ec95027fda17b96a8e22"
+  },
+  "validation": {
+    "unitAndCliTests": 9,
+    "integrationScenarios": 15,
+    "nodeIntegrationTestsIncludingParent": 16,
+    "failures": 0,
+    "skips": 0,
+    "typecheck": "passed",
+    "format": "passed",
+    "diffCheck": "passed",
+    "nodeRuntime": "v22.23.3",
+    "imageId": "sha256:591c175d369236234f1415aa637df92a394163e5db99ec95027fda17b96a8e22",
+    "sourceServerImage": "sha256:591c175d369236234f1415aa637df92a394163e5db99ec95027fda17b96a8e22",
+    "sourceAndServingArtifactsMatch": true,
+    "runtimeSourceHashes": {
+      "apps/server/src/index.ts": "db194076f99babe4cdd605cf326fa5b795b3746b97b16b80fee4006f996065d4",
+      "packages/cli/src/index.ts": "0797646ec0a36a34994accb96b12eb7578237af2807c563ad0f6d6eec29cafbb",
+      "packages/client/src/index.ts": "49a78c68f3a15f6649bb77c20c5185e6efe0d4060fee29daa5605e44911f1739",
+      "packages/contracts/src/index.ts": "facc56255a18f8ed857736d5e8dbadf1b838166c90d9a51c9761908bab42647f",
+      "packages/core/src/backup.ts": "ce0151c4d0f9adbca6187c73fe464006ed034e9114412f34978946719a7448e0",
+      "packages/core/src/claimDigest.ts": "d35d0b1daa18a25a13d8375bd7fb8972ab345960110cf59b0c55e9083c6a67bb",
+      "packages/core/src/content.ts": "461c9532468505807cdeca967e948f506a78770d3861e76a240905e561e3c4ca",
+      "packages/core/src/database.ts": "bd980820af294e6efa4069c6efb81b158fea53121936160c9216580052d36ea8",
+      "packages/core/src/extensions.ts": "b7b81c80061c24f47dd4266b3ea2beb93037ee6289b770fc890d46794e72317e",
+      "packages/core/src/helpers.ts": "3a3c2eeb9c5075c67f1c586cc52dc50e5ccf58837988ba852b554925c674afca",
+      "packages/core/src/index.ts": "f3795a5ff46c87483a1604839bd3bf6f0839be2c1681aa3cdeaf2fda8e248f97",
+      "packages/core/src/lifecycle.ts": "17e2e75353b5f91feb6f39e416155b45a51bd5bfe974ade292cabdbea6181fce",
+      "packages/core/src/secretPolicy.ts": "ae07e7f191ee01e8cfce67b64983462eaea293e88279b5513f19ef2f33f87e08",
+      "packages/core/src/verificationCoverage.ts": "93680b18aad235976f33ae3de51018a79276138b2bc1570ae3c616e8e1299d05",
+      "packages/core/src/verificationTypes.ts": "357c3caa66fa8b6cc0d5ad93d85a823b14730d7a28a9d2f64b185a2c9a1df4a1",
+      "packages/core/src/work.ts": "3d3287863c07352fb6ed5283b6eb5af1129ce28f947e93a9a248f0ce89191e8e",
+      "packages/mcp/src/index.ts": "572c3df92a8e508f856d1e0b231ab09f56ed307e0d399839ca93b75f24862a71"
+    },
+    "moduleHashes": {
+      "modules/context/001.sql": "2a79cd5549e31fd8f3ba2fde1bab8674e80746eeb4f8dae2d5f56d4406f1ae9d",
+      "modules/context/002.sql": "b6b0878da470973aa73b1ed1d27021344d439d8b669cfa871d9cc9cb5546c3f2",
+      "modules/context/manifest.json": "957957fc98dbcf7d14cad6a4b6cb94b271acbc5780ec3fd6777c1aecd2bdde45",
+      "modules/extensions/001.sql": "401dce2b08d6c95393a97219beabcec9012c13df0eb81c782046a78da259123a",
+      "modules/extensions/002.sql": "c599ecf187d42341624a14884cf64acf0c39492cfa40ffb62f8c46c4fcd81e17",
+      "modules/extensions/manifest.json": "07ef2f28277e2f31021826a641c2971d015a0cb2cbb13e0918c2de2cc0bcfa5f",
+      "modules/foundation/001.sql": "99115507a9875b19a0ef312857a9aff762ab02b224f4c209d6689893ff2a5ece",
+      "modules/foundation/002.sql": "2e0c8035aae5da5832fb5a2ecb3b49b99798e0a6537b20c803f76e3ace468537",
+      "modules/foundation/manifest.json": "989c2a3297627072834c70e52b1708d38533fadcf71f477d1f51c9b06b4a384d",
+      "modules/planning/001.sql": "a4e5a54cb24fec0533a02b611cdc3752022f7d0d9cd1a459c5df84c7673d093e",
+      "modules/planning/002.sql": "bca62a871815decdaffdbb16c14abc28ca2f12e1b02ef096358c74e9f0c82e52",
+      "modules/planning/manifest.json": "f711b5bda9cb49f9be28850bfff4b2e8629174674631ce4efc0e2a2bbcb33f29",
+      "modules/projects/001.sql": "c857b563d67d894061e5b42c3b964030eedf8a74ae76a1b121e2f8a5590d8aa3",
+      "modules/projects/002.sql": "6208b6048ef9db6981ebb67d880fd2a46e435fe39b65925359a59894b78fdf02",
+      "modules/projects/manifest.json": "4388096815b60fdc194924009c4eaf9cef9b8a968032e07911ffa2f590e7252c",
+      "modules/work/001.sql": "f1c728a7d5328924471f90531e98decb9cf5a4f8f39514754959f6a793b2c5fc",
+      "modules/work/002.sql": "0cb6e098c7a4d777a0a33e6928f9b1bec31b2f299863a27782369f4f05c0c17b",
+      "modules/work/manifest.json": "c352a66130945a9d3d2e13bc7b7783defb319cd348efc3c0d3da17d317d2bcd1"
+    },
+    "runtimeArtifactHashes": {
+      "apps/server/dist/index.js": "4761ee04055ce868749b8f147103d0bc1db275998f0ae10e6b232e7979d816fd",
+      "packages/cli/dist/index.js": "fb020992a10300ac107212e7f224f8f01a7b5cda3a5831b395b330d74da95a6f",
+      "packages/client/dist/index.js": "8f3373fc8c914f0248dc95a635110b4f9bccb111b2bc730867d357495e5af370",
+      "packages/contracts/dist/index.js": "38680bb4e7f8cba3bf58527c7a5a85219685051c5179647c39aa0d3dedfa56d1",
+      "packages/core/dist/backup.js": "55f8257eec9bbba26249634e74649ccfc7a2c29a02c0c2ca201ff39b7896c621",
+      "packages/core/dist/claimDigest.js": "2d080962d9d6ea902249738da4cfcf25ac247aeb91ad6d663c2e467e7ca3462a",
+      "packages/core/dist/content.js": "d6582b1a04aa19d20e058872245d6d91d0e42028be480711e457cb66723fc869",
+      "packages/core/dist/database.js": "63b06aa6fd262674cde980d38246166e1010e2fbe205db55276dd789d054153c",
+      "packages/core/dist/extensions.js": "937b24d41a2afad3bb8103e9217cb49202fcbe2cf62db5b22ed2bf773f097e2f",
+      "packages/core/dist/helpers.js": "5c7c5bbb144b7a29be6b44a9141f462aedcac58a0301589f2ae6ba3d71862218",
+      "packages/core/dist/index.js": "e0ed0028bfdb2f9c14d2cf67003f8febf7c815155276268d8d89c7a484eba70d",
+      "packages/core/dist/lifecycle.js": "97ca9c187a547b2b1eff1b08b67796fc81406be9c31db3c702517cb829da5b50",
+      "packages/core/dist/secretPolicy.js": "9ea5f15b30eb0184a3ebe9f17a446a005158455253aef166f031ab5a95e86cd3",
+      "packages/core/dist/verificationCoverage.js": "1fc733ef3117c0316df0a82a4a1b1a56a86a008a3a6a6e0b51e872033dc80a66",
+      "packages/core/dist/verificationTypes.js": "73620822733cabc7a671823365f642b5e376cb3fc03313b49db15430cb31fee4",
+      "packages/core/dist/work.js": "66a670aff909703fe93a3312eeaed2a53c66f8940e4e0ad1c17236cc73b2939a",
+      "packages/mcp/dist/index.js": "38b90e723da0d3fa894d166d62c41438aafee79513681670f3350e57e9ff2632"
+    },
+    "inputHashes": {
+      "tests/cli-help.test.mjs": "79af8a671e288b0d8deb69917e58f292cd9664aee2b375c81840d520cd1b4c4d",
+      "tests/acceptance/headless.test.mjs": "04f57cde2e8b01adc432784ed7e4dc10fd6171ca09579373284d43106eff36be",
+      "tests/coverage.test.mjs": "fe336f035ee593407461e95c48855100f0e0fbd7aa50f36b6010f473ea1282b0",
+      "package-lock.json": "60862ee1fd5b91a61a5aea43ff5ea963e5e983bf5dc04601869f7158de7a0b53",
+      "Dockerfile": "f0c99b76552bb262df41382eda4a58a7913418f1c37f31716459f98af88d5dc5"
+    },
+    "reportHashes": {
+      "headless.tap": "453f73f8ffafe2dab0ec140a41d1f21b7cee738b1edf345f6226b8b6d3be9d3b",
+      "unit.txt": "3e33bc6076d93c0e692d306d389fae9f6106a1708276a0e8a1c01026a2ddc0f3"
+    }
+  },
+  "limits": [
+    "Root provisioned agents and temporary recovery configuration; no unaided second-host setup proof",
+    "One local development project, not outside adoption or independent human acceptance",
+    "No independent security review or throughput qualification",
+    "Replayed historical receipts retain their original response shape"
+  ]
+}

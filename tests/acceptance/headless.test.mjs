@@ -440,6 +440,16 @@ test('standalone headless acceptance on real PostgreSQL and subprocess clients',
           );
           const claimTool = tools.tools.find((t) => t.name === 'work_claim');
           assert.ok(!('claimSecret' in claimTool.inputSchema.properties));
+          assert.deepEqual(claimTool.inputSchema.required, ['id', 'requestKey']);
+          assert.equal(claimTool.inputSchema.properties.leaseSeconds.default, 300);
+          assert.deepEqual(tools.tools.find((t) => t.name === 'work_get').inputSchema.required, [
+            'id',
+          ]);
+          assert.deepEqual(
+            tools.tools.find((t) => t.name === 'work_list').inputSchema.required,
+            [],
+          );
+
           const prev = parseTool(
             await mcp.callTool({ name: 'work_get', arguments: { id: work.id } }),
           );
@@ -955,6 +965,7 @@ test('standalone headless acceptance on real PostgreSQL and subprocess clients',
           env: { PATH: process.env.PATH, SIFT_CONFIG: b.path, SIFT_TOOLS: 'work' },
           stderr: 'pipe',
         });
+        let createdArtifactId;
         const mcp = new Client({ name: 'lifecycle-worker', version: '1.0.0' });
         await mcp.connect(transport);
         try {
@@ -987,15 +998,32 @@ test('standalone headless acceptance on real PostgreSQL and subprocess clients',
             ],
             ['work_review', { id: w.id, summary: 'Ready' }],
           ]) {
-            parseTool(
-              await mcp.callTool({ name, arguments: { ...args, requestKey: randomUUID() } }),
+            const requestKey = randomUUID();
+            const result = parseTool(
+              await mcp.callTool({ name, arguments: { ...args, requestKey } }),
             );
+            if (name === 'work_artifacts_add') {
+              createdArtifactId = result.artifactId;
+              assert.match(createdArtifactId, /^[0-9a-f-]{36}$/);
+              const replay = parseTool(
+                await mcp.callTool({ name, arguments: { ...args, requestKey } }),
+              );
+              assert.deepEqual(replay, result);
+              const direct = parseTool(
+                await mcp.callTool({
+                  name: 'work_artifacts_get',
+                  arguments: { id: w.id, artifactId: createdArtifactId },
+                }),
+              );
+              assert.equal(direct.content, args.content);
+            }
           }
         } finally {
           await mcp.close();
         }
         const artifactsList = await callCli(f, 'work.artifacts.list', { id: w.id });
         assert.equal(artifactsList.length, 1);
+        assert.equal(artifactsList[0].id, createdArtifactId);
         const artifact = await callCli(f, 'work.artifacts.get', {
           id: w.id,
           artifactId: artifactsList[0].id,

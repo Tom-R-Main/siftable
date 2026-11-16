@@ -36,9 +36,67 @@ const { positionals, values } = parseArgs({
 const [command, ...rest] = positionals;
 const print = (value: unknown) => process.stdout.write(JSON.stringify(value, null, 2) + '\n');
 async function main() {
+  const name = [command, ...rest].filter(Boolean).join('.');
+  if (values.help && Object.hasOwn(operations, name)) {
+    const operation = operations[name as Operation];
+    const inputSchema = operation.input.toJSONSchema({ io: 'input' }) as {
+      properties: Record<string, unknown>;
+      required?: string[];
+    };
+    const managesLease = Object.hasOwn(inputSchema.properties, 'claimSecret');
+    delete inputSchema.properties.claimSecret;
+    delete inputSchema.properties.epoch;
+    inputSchema.required = (inputSchema.required ?? []).filter(
+      (field) => !['claimSecret', 'epoch'].includes(field),
+    );
+    print({
+      operation: name,
+      usage: `sift ${name} --config <credential-file> --json <object>${operation.write ? ' --key <stable-key>' : ''}`,
+      input: '--json <object> or --file <path>; fields and constraints are in inputSchema',
+      module: operation.module,
+      writes: operation.write,
+      operatorRequired: operation.operator,
+      availability:
+        'Local reference only. Use catalog with your credential to check enabled and permitted operations.',
+      ...(operation.write
+        ? {
+            requestKey:
+              'Required: --key <stable-key>. Retry identical input with the same key after a lost response; use a new key for changed input.',
+          }
+        : {}),
+      ...(managesLease
+        ? {
+            leaseCustody:
+              name === 'work.claim'
+                ? 'The client generates and saves the lease in the credential directory. No caller-supplied lease fields are needed.'
+                : 'Requires an active claim made with this credential. The client reads its saved lease automatically; no caller-supplied lease fields are needed.',
+          }
+        : {}),
+      inputSchema,
+    });
+    return;
+  }
+  if (
+    values.help &&
+    command &&
+    ![
+      'catalog',
+      'init',
+      'install',
+      'credential',
+      'revoke',
+      'backup',
+      'restore',
+      'backup-verify',
+      'modules-plan',
+    ].includes(name)
+  ) {
+    throw new Error('Unknown operation; use --help');
+  }
   if (values.help || !command) {
     print({
       usage: 'sift <operation> --config <credential-file> --json <object> [--key <stable-key>]',
+      operationHelp: 'sift <operation> --help (input schema; no credential or service required)',
       administration: [
         'init --modules projects,context,work,planning,extensions --output <credential-file> --url http://127.0.0.1:8080',
         'modules-plan --modules context',
@@ -121,7 +179,6 @@ async function main() {
     );
     return;
   }
-  const name = [command, ...rest].join('.');
   const client = await SiftClient.fromFile(
     resolve(values.config ?? process.env.SIFT_CONFIG ?? '.local/owner.json'),
   );

@@ -297,6 +297,7 @@ export async function workOperation(
     await event(c, p, w.id, name, { reason: a.reason });
     return { ...result, deleted: name.endsWith('.delete') };
   }
+  let artifactId: string | undefined;
   if (name === 'work.update' || name === 'work.dependencies.set') {
     const a = operations[name].input.parse(input);
     if (w.status !== 'queued' && w.status !== 'blocked')
@@ -410,10 +411,11 @@ export async function workOperation(
       );
     } else if (name === 'work.artifacts.add') {
       const v = operations[name].input.parse(input);
+      artifactId = randomUUID();
       await c.query(
         'INSERT INTO work.artifacts(id,owner_id,scope_id,work_id,plan_version,name,media_type,content,digest,actor) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
         [
-          randomUUID(),
+          artifactId,
           p.ownerId,
           p.scopeId,
           w.id,
@@ -479,9 +481,10 @@ export async function workOperation(
   await event(c, p, w.id, name, {
     ...('reason' in (input as object) ? { reason: (input as { reason: string }).reason } : {}),
     planVersion: updated.plan_version,
+    ...(artifactId ? { artifactId } : {}),
     ...(name === 'work.dependencies.set'
       ? { dependencies: operations[name].input.parse(input).dependencies }
       : {}),
   });
-  return display(c, updated);
+  return { ...(await display(c, updated)), ...(artifactId ? { artifactId } : {}) };
 }

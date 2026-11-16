@@ -34,6 +34,15 @@ npm run sift -- modules.list --config .local/owner.json
 npm run sift -- schema.inspect --config .local/owner.json
 ```
 
+Discover the input contract for an operation before calling it:
+
+```sh
+npm run sift -- work.claim --help
+npm run sift -- work.artifacts.add --help
+```
+
+Operation help is generated from the bundled registry and works without credentials or a running server. It shows the caller's JSON input, required fields, defaults/limits, and the stable request-key requirement. The CLI manages lease secrets and epochs automatically. Use `catalog` with your credential to check which operations the current server actually permits; local help describes supported syntax, not authorization or module enablement.
+
 Create a project and work item (use returned IDs for subsequent operations):
 
 ```sh
@@ -106,7 +115,7 @@ A lease holder can `work.block` or `work.fail` with a reason. Both release the l
 
 `work.update` and `work.dependencies.set` accept only queued/blocked work with the expected revision, and start new verification coverage. Dependency edits reject cycles. `work.plan.revise` retains previous plans and returns nonterminal work to the queue. `work.get` includes dependencies, plan history, evidence, events and artifact metadata.
 
-`work.artifacts.add` requires an active lease and stores a bounded text artifact (up to 64,000 characters), its media type, SHA-256, actor and plan version. `work.artifacts.list` and `work.artifacts.get` retrieve it. Artifacts are immutable and included in backups. Binary/object-store attachments are not implemented. Custom relationship edges can be read/updated/deleted; built-in project/work associations are outside that API. Schema and relationship **definitions** remain immutable contracts.
+`work.artifacts.add` requires an active lease and stores a bounded text artifact (up to 64,000 characters), its media type, SHA-256, actor and plan version. New creation receipts include `artifactId` alongside the work `id`, so callers can immediately use `work.artifacts.get` without listing. Identical request-key retries return the same receipt and artifact ID. `work.artifacts.list` also retrieves metadata; historical receipts remain unchanged. Artifacts are immutable and included in backups. Binary/object-store attachments are not implemented. Custom relationship edges can be read/updated/deleted; built-in project/work associations are outside that API. Schema and relationship **definitions** remain immutable contracts.
 
 ## MCP
 
@@ -127,7 +136,7 @@ Configure any client supporting MCP over stdio. Use absolute paths:
 }
 ```
 
-`SIFT_TOOLS` selects module groups for presentation. It cannot grant permissions. Discovery refreshes the server catalog; calls recheck enabled modules and permissions. Mutations require `requestKey`. Tool names replace dots with underscores, such as `work_claim` and `notes_get`. Schemas and tools come from the same operation registry as the API.
+`SIFT_TOOLS` selects module groups for presentation. It cannot grant permissions. Discovery refreshes the server catalog; calls recheck enabled modules and permissions. Mutations require `requestKey`. Tool names replace dots with underscores, such as `work_claim` and `notes_get`. Schemas and tools come from the same operation registry as the API. Discovery describes caller input: fields with server defaults, such as lease duration and pagination, are optional.
 
 The initial transport is stdio MCP connecting to the local HTTP API. HTTP MCP transport and MCP Apps are not included.
 

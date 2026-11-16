@@ -8,7 +8,7 @@ The repeated job is: **“Give my next agent enough trustworthy project context 
 
 ## Immediate goal: a local beta that survives ordinary use
 
-The current implementation targets the **checked locally** rung. A shareable beta additionally needs a documented install/upgrade/recovery path on a second clean host, an independent review of authorization/recovery/migrations, and actual use on a bounded project. Public release remains separately authorized.
+The current implementation has reached **checked and used locally** on the extraction’s own delegated-agent pilot. A shareable beta additionally needs a documented install/upgrade/recovery path on a second clean host, an independent review of authorization/recovery/migrations, and actual use on a bounded project. Public release remains separately authorized.
 
 Acceptance journey:
 
@@ -19,11 +19,11 @@ Acceptance journey:
 5. Stop/restart, upgrade an older database, back up, restore into a fresh database and continue useful work with identical prior records and intentionally invalidated active leases.
 6. Repeat the same journey using only the README and packaged artifacts on another host, with no access to the old monorepo.
 
-Steps 1–5 have automated local acceptance coverage. Step 6 and independent human usability are still unproven.
+Steps 1–5 have automated local acceptance coverage. The extraction itself has now completed two actual agent handoffs and a recovery drill; see [the pilot report](pilot/2026-11-16.md). Step 6 and independent human usability are still unproven.
 
 ## Next steps, in order
 
-1. **Use one real local project.** Run at least two agent handoffs and one deliberate recovery drill. Record where context is missing, which operations clients need, and any manual database intervention. Do not migrate production/private source data implicitly.
+1. **First local project: completed.** The extraction pilot used three separately delegated agents for two handoffs and a real recovery drill. It exposed and repaired CLI help, MCP schema defaults and artifact receipt friction. Repeat use remains worth observing; this single run is not outside adoption. Do not migrate production/private source data implicitly.
 2. **Close observed gaps and stabilize the contract.** Add generated operation examples/reference, a doctor command, explicit compatibility/version policy and release upgrade instructions. Add repository checkout mapping only if the pilot requires automatic project resolution; use explicit project IDs until then.
 3. **Make the local beta independently reproducible.** Verify the README on a second host, test a larger representative dataset, review credentials/RLS/restore failure paths, and document backup retention and recovery expectations. No performance or security certification is implied by functional acceptance.
 4. **Prepare, then approve a public release.** Select the root license, check provenance/notices, pin release artifacts and publish only after Thomas explicitly authorizes it. A local repository and passing suite are not a release.
