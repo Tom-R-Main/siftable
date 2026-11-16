@@ -1,0 +1,2175 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-11-16",
+  "sourceHead": "fb762fd2be4ec62e8ebd8048d75721fbb05ad5c6",
+  "status": "source-inspected extraction seeds; not copy allowlist or resolved dependency closure",
+  "limitations": [
+    "Regex import inventory does not resolve dynamic imports, barrel exports, SQL dependencies or runtime registrations.",
+    "Command/domain folders include deferred operations; the plan defines the public subset.",
+    "Test paths are adjacent name matches, not all test coverage.",
+    "No install/build/test or publication performed."
+  ],
+  "files": [
+    {
+      "module": "foundation",
+      "source": "exf-app/src/controllers/lib/idempotentMutationRoute.ts",
+      "sha256": "2eec9827c89c4387c256ee163b93f0ae455274bccb9515db8d61f280aeb4e54d",
+      "direct_import_specifiers": [
+        "../../errors",
+        "../../services/mutationIdempotencyService",
+        "express"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "foundation",
+      "source": "exf-app/src/db.ts",
+      "sha256": "9e40011b6adeab7fbd9cf1e49fa95174ba2722156a13902b99101f342465c67d",
+      "direct_import_specifiers": [
+        "./config/env",
+        "node:async_hooks",
+        "pg"
+      ],
+      "adjacent_matching_tests": [
+        "exf-app/src/db.test.ts"
+      ],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "foundation",
+      "source": "exf-app/src/errors.ts",
+      "sha256": "039358d066fd1f0aac37e41b2981ea749294b19e4289789c7eec8e79db837459",
+      "direct_import_specifiers": [],
+      "adjacent_matching_tests": [
+        "exf-app/src/errors.test.ts"
+      ],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "foundation",
+      "source": "exf-app/src/middleware/patAuth.ts",
+      "sha256": "2c07ac9c0833a5f40ad90671bca8ede05dad8d9007138fb6f9b8652446e55c98",
+      "direct_import_specifiers": [
+        "../config/logger",
+        "../errors",
+        "../services/patService",
+        "express"
+      ],
+      "adjacent_matching_tests": [
+        "exf-app/src/middleware/patAuth.test.ts"
+      ],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "foundation",
+      "source": "exf-app/src/services/mutationIdempotencyService.ts",
+      "sha256": "cdc7e3c7fec114e69b03fe63fb8737f68aac759f675a23400db1dca587499561",
+      "direct_import_specifiers": [
+        "../db",
+        "../errors",
+        "node:crypto",
+        "pg"
+      ],
+      "adjacent_matching_tests": [
+        "exf-app/src/services/mutationIdempotencyService.test.ts"
+      ],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "foundation",
+      "source": "exf-app/src/services/patService.ts",
+      "sha256": "3adfa06aebc9ef1da980900c574bf3e0798a2e34a4610e7003619e468a85f92e",
+      "direct_import_specifiers": [
+        "../config/logger",
+        "../db",
+        "../errors",
+        "./mcpCatalogProfile",
+        "@execufunction/shared",
+        "crypto",
+        "pg"
+      ],
+      "adjacent_matching_tests": [
+        "exf-app/src/services/patService.test.ts"
+      ],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "projects",
+      "source": "exf-app/src/controllers/projectController.ts",
+      "sha256": "ecfe5a64b5ae4b905fd87d61c1f39e5c255ebbe8e88b0035b3be6e5478e67833",
+      "direct_import_specifiers": [
+        "../config/env",
+        "../config/logger",
+        "../db",
+        "../errors",
+        "../middleware/auth",
+        "../middleware/validateUuid",
+        "../services/agentWorkService",
+        "../services/mutationIdempotencyService",
+        "../services/orchestrator/agentRouter",
+        "../services/orgResourceAccessService",
+        "../services/planningAutomationService",
+        "../services/projectContextService",
+        "../services/projectPlanBookmarkService",
+        "../services/projectPlanNotionExportService",
+        "../services/projectPlanningService",
+        "../services/projectService",
+        "../services/taskService",
+        "../utils/authHelpers",
+        "./lib/idempotentMutationRoute",
+        "./projectWorkSurfaceController",
+        "./publicProjectListController",
+        "@execufunction/shared",
+        "express"
+      ],
+      "adjacent_matching_tests": [
+        "exf-app/src/controllers/projectController.publicList.test.ts"
+      ],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "projects",
+      "source": "exf-app/src/controllers/repositoryIdentityController.ts",
+      "sha256": "f08a1266b231dbbb96e647fcca89b080f81f02dfd852b4f740b3932850df9144",
+      "direct_import_specifiers": [
+        "../errors",
+        "../middleware/patAuth",
+        "../middleware/validateUuid",
+        "../services/repositoryIdentityService",
+        "@execufunction/shared",
+        "express"
+      ],
+      "adjacent_matching_tests": [
+        "exf-app/src/controllers/repositoryIdentityController.test.ts"
+      ],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "projects",
+      "source": "exf-app/src/services/projectAccessService.ts",
+      "sha256": "d29441f7178fb4097b736cf42c19072ac6d7d99253eac3e3feb9258f994466a6",
+      "direct_import_specifiers": [
+        "../config/env",
+        "../db",
+        "../errors",
+        "pg"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "projects",
+      "source": "exf-app/src/services/projectService.ts",
+      "sha256": "0ef83bf43bebfa6cafb34e152f4e2d57a9ba81f684bf1a9d695ba03334e64931",
+      "direct_import_specifiers": [
+        "../config/env",
+        "../config/logger",
+        "../db",
+        "../errors",
+        "../utils/htmlEscape",
+        "../utils/recordPresentationPolicy",
+        "./collaborationNotificationService",
+        "./contextGraphService",
+        "./identityService",
+        "./orgResourceAccessService",
+        "./projectAccessService",
+        "@execufunction/shared",
+        "pg",
+        "resend"
+      ],
+      "adjacent_matching_tests": [
+        "exf-app/src/services/projectService.runtimeScope.test.ts",
+        "exf-app/src/services/projectService.test.ts"
+      ],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "projects",
+      "source": "exf-app/src/services/repositoryIdentityService.ts",
+      "sha256": "f1b20d26fe6e106152fd33855f77a8d4115fc947b5493745a7327272afdf66b9",
+      "direct_import_specifiers": [
+        "../db",
+        "../errors",
+        "./projectAccessService"
+      ],
+      "adjacent_matching_tests": [
+        "exf-app/src/services/repositoryIdentityService.test.ts"
+      ],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "planning",
+      "source": "exf-app/src/routes/tasks.ts",
+      "sha256": "23d93bb2a804f74edbf877f18b43b3362f858ab654e4461ecc2ce0573ef99800",
+      "direct_import_specifiers": [
+        "../controllers/decomposeController",
+        "../controllers/taskChatController",
+        "../controllers/taskController",
+        "../controllers/taskPlanningController",
+        "../middleware/validateUuid",
+        "express"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "planning",
+      "source": "exf-app/src/services/taskService.ts",
+      "sha256": "7f908f568afba7097c5757853077b450d33d3a42ba28aeb4436c5d7f5eb92597",
+      "direct_import_specifiers": [
+        "../config/env",
+        "../config/logger",
+        "../db",
+        "../errors",
+        "../utils/recordPresentationPolicy",
+        "./contextGraphService",
+        "./emailService",
+        "./eventService",
+        "./orgResourceAccessService",
+        "./temporalFactService",
+        "./userTimezoneService",
+        "@execufunction/shared",
+        "luxon",
+        "pg",
+        "rrule"
+      ],
+      "adjacent_matching_tests": [
+        "exf-app/src/services/taskService.orgAccess.test.ts",
+        "exf-app/src/services/taskService.test.ts"
+      ],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "context",
+      "source": "exf-app/src/controllers/knowledgeController.ts",
+      "sha256": "9676fb09e7d9bc141b815525e17a730aa8c283f6d92099163461218d8bf0d624",
+      "direct_import_specifiers": [
+        "../config/logger",
+        "../db",
+        "../errors",
+        "../middleware/auth",
+        "../middleware/validateUuid",
+        "../middleware/workspaceRole",
+        "../services/bulkDeleteCountService",
+        "../services/bulkDeleteService",
+        "../services/contextGraphService",
+        "../services/knowledgeNoteService",
+        "../services/mutationIdempotencyService",
+        "../services/orgResourceAccessService",
+        "../utils/authHelpers",
+        "../utils/markdownToTipTap",
+        "./lib/bulkDeleteRoute",
+        "express"
+      ],
+      "adjacent_matching_tests": [
+        "exf-app/src/controllers/knowledgeController.test.ts"
+      ],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "context",
+      "source": "exf-app/src/services/contextCompilerService.ts",
+      "sha256": "e7ffd194a9e7e1b5c3f3a9e4022647cc29674473a3607f8e749b37f62c190c58",
+      "direct_import_specifiers": [
+        "../config/logger",
+        "../db",
+        "./contextPacket/manifest",
+        "@execufunction/shared",
+        "crypto",
+        "pg"
+      ],
+      "adjacent_matching_tests": [
+        "exf-app/src/services/contextCompilerService.boundWrite.test.ts",
+        "exf-app/src/services/contextCompilerService.test.ts"
+      ],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "context",
+      "source": "exf-app/src/services/contextGraphService.ts",
+      "sha256": "3fbad58fcd92cab651df8a880dea912e04f4a359b28825a68bd73179fd351928",
+      "direct_import_specifiers": [
+        "../config/logger",
+        "../db",
+        "../errors",
+        "../types/lensDataScope",
+        "./customObjectService",
+        "./datasets/datasetSql",
+        "./orgWorkspaceAccessService",
+        "./typedRelationshipService",
+        "@execufunction/shared",
+        "pg"
+      ],
+      "adjacent_matching_tests": [
+        "exf-app/src/services/contextGraphService.test.ts"
+      ],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "context",
+      "source": "exf-app/src/services/contextIndexService.ts",
+      "sha256": "b4457f488b7d6a9cc59ec59e92d704927d572454c86e84d5dcc1a058fac2eafb",
+      "direct_import_specifiers": [
+        "../config/logger",
+        "../db",
+        "./ontology/entityLoaders",
+        "./ontology/entitySerializers",
+        "pg"
+      ],
+      "adjacent_matching_tests": [
+        "exf-app/src/services/contextIndexService.test.ts"
+      ],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "context",
+      "source": "exf-app/src/services/contextPacket/manifest.ts",
+      "sha256": "e585ab6c3e07958dfa73af4f88e5c2df4637576557fd9ece6960726515ada15c",
+      "direct_import_specifiers": [
+        "@execufunction/shared",
+        "crypto"
+      ],
+      "adjacent_matching_tests": [
+        "exf-app/src/services/contextPacket/manifest.test.ts"
+      ],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "context",
+      "source": "exf-app/src/services/contextSearchService.ts",
+      "sha256": "0558c2d23e0867dbf5ec73c2c2e8f8c5563740f91f0509e739ead2e4a6321096",
+      "direct_import_specifiers": [
+        "../config/logger",
+        "../db",
+        "./contextIndexService",
+        "pg"
+      ],
+      "adjacent_matching_tests": [
+        "exf-app/src/services/contextSearchService.test.ts"
+      ],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "context",
+      "source": "exf-app/src/services/knowledgeNoteService.ts",
+      "sha256": "9c70fe9292043c6f04f69954c8633491d7a96e7a20220597d9aeb25d14ea08b6",
+      "direct_import_specifiers": [
+        "../clients/embeddingClient",
+        "../config/logger",
+        "../db",
+        "../errors",
+        "../middleware/safetySanitiser",
+        "../utils/chunking",
+        "../utils/keysetCursor",
+        "./contextGraphService",
+        "./orgResourceAccessService",
+        "./temporalFactService",
+        "luxon",
+        "pg",
+        "uuid"
+      ],
+      "adjacent_matching_tests": [
+        "exf-app/src/services/knowledgeNoteService.test.ts"
+      ],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "work",
+      "source": "exf-app/src/config/agentWorkContractPolicy.ts",
+      "sha256": "ee43738022d175f256dcebaa7f0df46bcab3aa689e6234b724116caad169562d",
+      "direct_import_specifiers": [
+        "../errors",
+        "./env",
+        "@execufunction/shared"
+      ],
+      "adjacent_matching_tests": [
+        "exf-app/src/config/agentWorkContractPolicy.test.ts"
+      ],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "work",
+      "source": "exf-app/src/controllers/lib/workItemCreateSchema.ts",
+      "sha256": "ab4a9f1a610fe356c326dd8546efa4a790d097c396202195f145f8d565c32cbd",
+      "direct_import_specifiers": [
+        "@execufunction/shared",
+        "zod"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "work",
+      "source": "exf-app/src/controllers/workItemsController.ts",
+      "sha256": "3eef56c2dd9660267dbb3d503fa22fef103c51828108a257fc345f9673bd8cbe",
+      "direct_import_specifiers": [
+        "../config/env",
+        "../db",
+        "../errors",
+        "../middleware/patAuth",
+        "../middleware/rateLimit",
+        "../services/agentWorkAttemptResultService",
+        "../services/agentWorkService",
+        "../services/agentWorkVerificationPlanService",
+        "../services/mobileWorkNotificationService",
+        "../services/mutationIdempotencyService",
+        "../services/verifierRunService",
+        "../services/workCoverage/workCoverageShadowService",
+        "../utils/asyncHandler",
+        "./a2aWorkAcceptanceController",
+        "./a2aWorkReviewController",
+        "./agentWorkExecutionController",
+        "./agentWorkRuntimeControlController",
+        "./agentWorkRuntimeRequestController",
+        "./lib/idempotentMutationRoute",
+        "./lib/workItemCreateSchema",
+        "./mobileWorkController",
+        "./workItemCollaborationController",
+        "@execufunction/shared",
+        "@siftable/mcp-server/publicWorkDisplay",
+        "express",
+        "zod"
+      ],
+      "adjacent_matching_tests": [
+        "exf-app/src/controllers/workItemsController.test.ts"
+      ],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "work",
+      "source": "exf-app/src/services/agentWorkClaimDigest.ts",
+      "sha256": "d35d0b1daa18a25a13d8375bd7fb8972ab345960110cf59b0c55e9083c6a67bb",
+      "direct_import_specifiers": [
+        "crypto"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "work",
+      "source": "exf-app/src/services/agentWorkItemsRead.ts",
+      "sha256": "7e35b359708bcfd519a4e1aca0dab776dc12a6c3d17686e6db0aeeb3e771159d",
+      "direct_import_specifiers": [
+        "./agentWorkService",
+        "pg"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "work",
+      "source": "exf-app/src/services/agentWorkService.ts",
+      "sha256": "e3293549f00aaf618bbb8b75663f4c499333d7490077106a629fdde44b663ca8",
+      "direct_import_specifiers": [
+        "../config/agentWorkContractPolicy",
+        "../db",
+        "../errors",
+        "./agentWorkClaimDigest",
+        "./agentWorkVerificationPlanService",
+        "./codeMemoryCapture",
+        "./projectService",
+        "./resumableWorkCaptureService",
+        "@execufunction/shared",
+        "crypto",
+        "pg"
+      ],
+      "adjacent_matching_tests": [
+        "exf-app/src/services/agentWorkService.test.ts"
+      ],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "work",
+      "source": "exf-app/src/services/agentWorkVerificationCoverage.ts",
+      "sha256": "4af269c2ea419801ea31282278aac53dc166d6162dea32edc9ded196fd253f87",
+      "direct_import_specifiers": [
+        "./agentWorkVerificationPlanService"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "work",
+      "source": "exf-app/src/services/agentWorkVerificationPlanService.ts",
+      "sha256": "5b8ad189e216a91191a0e5a3d8ae8bf9cf44412c329bb3d98ce71ce9f1878403",
+      "direct_import_specifiers": [
+        "../db",
+        "../errors",
+        "./agentWorkVerificationCoverage",
+        "@execufunction/shared",
+        "node:crypto",
+        "pg"
+      ],
+      "adjacent_matching_tests": [
+        "exf-app/src/services/agentWorkVerificationPlanService.test.ts"
+      ],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "code-memory",
+      "source": "exf-app/src/services/codeMemoryCapture.ts",
+      "sha256": "ecee2bd30603345b34b5762f6d8bd6c353080b5db560c97c9db67a502b9d9097",
+      "direct_import_specifiers": [
+        "../errors",
+        "./codeMemorySafety",
+        "./codeMemoryService"
+      ],
+      "adjacent_matching_tests": [
+        "exf-app/src/services/codeMemoryCapture.test.ts"
+      ],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "code-memory",
+      "source": "exf-app/src/services/codeMemorySafety.ts",
+      "sha256": "9c5be7043aba3f20967eb476b8f3ddacbb7b34d5468554afcf0c6b30674b3334",
+      "direct_import_specifiers": [
+        "../errors"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "code-memory",
+      "source": "exf-app/src/services/codeMemoryService.ts",
+      "sha256": "19d430993d25eac3a997fea12305a5fb5e8d72cc7ffa35a163971f88afb845a9",
+      "direct_import_specifiers": [
+        ", ",
+        "../clients/embeddingClient",
+        "../config/logger",
+        "../db",
+        "../errors",
+        "./codeMemorySafety"
+      ],
+      "adjacent_matching_tests": [
+        "exf-app/src/services/codeMemoryService.test.ts"
+      ],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "collaboration",
+      "source": "exf-app/src/controllers/workItemCollaborationController.ts",
+      "sha256": "3ab325ba75852c464a009d1cefd550c8ee4d96790f934ac4d4dec6810f9ea04e",
+      "direct_import_specifiers": [
+        "../errors",
+        "../middleware/patAuth",
+        "../services/agentWorkCollaborationService",
+        "../services/mutationIdempotencyService",
+        "@execufunction/shared",
+        "express"
+      ],
+      "adjacent_matching_tests": [
+        "exf-app/src/controllers/workItemCollaborationController.test.ts"
+      ],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "collaboration",
+      "source": "exf-app/src/services/agentWorkCollaborationDelivery.ts",
+      "sha256": "5161bf80f8d7b7fe9bd186aebb0564864da2fab0a17a65dca76b2be6d0fc9f5f",
+      "direct_import_specifiers": [
+        "../errors",
+        "@execufunction/shared",
+        "pg"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "collaboration",
+      "source": "exf-app/src/services/agentWorkCollaborationService.ts",
+      "sha256": "a48b5021b3a6f83442c532e9b1a61dbe6825004e011e2b2521387d9a2abfe38c",
+      "direct_import_specifiers": [
+        "../db",
+        "../errors",
+        "./agentWorkCollaborationDelivery",
+        "./agentWorkService",
+        "@execufunction/shared",
+        "node:crypto",
+        "pg"
+      ],
+      "adjacent_matching_tests": [
+        "exf-app/src/services/agentWorkCollaborationService.test.ts"
+      ],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "extensions",
+      "source": "exf-app/src/services/customObjectService.ts",
+      "sha256": "2e0e1d2a94bc1390379d31afa725655299854a13a9884ab14b3804531bcd1e4c",
+      "direct_import_specifiers": [
+        "../db",
+        "../errors",
+        "../types/customObject",
+        "../types/lensDataScope",
+        "pg"
+      ],
+      "adjacent_matching_tests": [
+        "exf-app/src/services/customObjectService.objectSetQuery.test.ts",
+        "exf-app/src/services/customObjectService.test.ts"
+      ],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "extensions",
+      "source": "exf-app/src/services/typedRelationshipService.ts",
+      "sha256": "98efc62874017fe1b97a82319ba340b4a565b9187a689dba23e437a63446c1b9",
+      "direct_import_specifiers": [
+        "../db",
+        "../errors",
+        "../types/customObject",
+        "../types/lensDataScope",
+        "../types/typedRelationship",
+        "pg",
+        "zod"
+      ],
+      "adjacent_matching_tests": [
+        "exf-app/src/services/typedRelationshipService.test.ts"
+      ],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "extensions",
+      "source": "exf-app/src/types/customObject.ts",
+      "sha256": "ac4de17334028f8fce93579c5cdcc77e2cd7fcbfea188f73a36c4d977302f354",
+      "direct_import_specifiers": [
+        "./lensDataScope",
+        "@execufunction/shared"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "extensions",
+      "source": "exf-app/src/types/typedRelationship.ts",
+      "sha256": "212bc45e51c1ff8790805500923b9ca262751162e1371bb5a428c337677688a5",
+      "direct_import_specifiers": [
+        "./customObject",
+        "./lensDataScope"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "contracts",
+      "source": "packages/shared/src/types/agentWorkCollaboration.ts",
+      "sha256": "cc9714b22d06fe375bcacd2057466f63a66cdeaca1b5705b417f03c03d7979f9",
+      "direct_import_specifiers": [],
+      "adjacent_matching_tests": [
+        "packages/shared/src/types/agentWorkCollaboration.test.ts"
+      ],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "contracts",
+      "source": "packages/shared/src/types/agentWorkContract.ts",
+      "sha256": "c7f00788dc480512811481b776e715ebddb6899bcf54b6277888eaabcf6e09cf",
+      "direct_import_specifiers": [],
+      "adjacent_matching_tests": [
+        "packages/shared/src/types/agentWorkContract.test.ts"
+      ],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "contracts",
+      "source": "packages/shared/src/types/agentWorkSecrets.ts",
+      "sha256": "6d3edce38fe2ce33f45504c3f59914b63284fc84683ba51c0c1f21e9d931e399",
+      "direct_import_specifiers": [],
+      "adjacent_matching_tests": [
+        "packages/shared/src/types/agentWorkSecrets.test.ts"
+      ],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "contracts",
+      "source": "packages/shared/src/types/agentWorkVerification.ts",
+      "sha256": "4c9363705be7ca2934bed4b5c1b8d55053dc9d8d85afd2bc31c0d996a8be4d5f",
+      "direct_import_specifiers": [],
+      "adjacent_matching_tests": [
+        "packages/shared/src/types/agentWorkVerification.test.ts"
+      ],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "contracts",
+      "source": "packages/shared/src/types/contextSource.ts",
+      "sha256": "928778dde428810bd863a0e7a52605880f7b78975a8383adfc439df833352b4d",
+      "direct_import_specifiers": [
+        "./siftContext",
+        "zod"
+      ],
+      "adjacent_matching_tests": [
+        "packages/shared/src/types/contextSource.test.ts"
+      ],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "contracts",
+      "source": "packages/shared/src/types/entityGraphContract.ts",
+      "sha256": "a1915d51d4c988f49de78533b40f481d3c08bca3b02d83bd95e58e2996e86ebc",
+      "direct_import_specifiers": [],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "contracts",
+      "source": "packages/shared/src/types/project.ts",
+      "sha256": "4a73d2f12243a9d6c49add8ea19059601d235d4d850368339a5db721c21e3913",
+      "direct_import_specifiers": [],
+      "adjacent_matching_tests": [
+        "packages/shared/src/types/projectWorkSurface.test.ts"
+      ],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "contracts",
+      "source": "packages/shared/src/types/siftContext.ts",
+      "sha256": "961631cfb172401f10be7655cfb09d9db765b00ac306cdf1001ef234ab409682",
+      "direct_import_specifiers": [],
+      "adjacent_matching_tests": [
+        "packages/shared/src/types/siftContext.test.ts"
+      ],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "contracts",
+      "source": "packages/shared/src/types/task.ts",
+      "sha256": "447eb44299bd82ae4e2c0b5f877add74593a14bd0dad5b5fc818a9314c6a162e",
+      "direct_import_specifiers": [],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "client",
+      "source": "packages/exf-mcp-server/src/exfClient.ts",
+      "sha256": "49a4e697e24bb066d73d1fdc06f3ae8628a769efaa6d311b50bea66a800f822c",
+      "direct_import_specifiers": [
+        ", input.from);\n    if (input.to) params.set(",
+        ", options.from);\n    if (options?.to) params.set(",
+        "./aiContracts.js",
+        "./clientResponseParsing.js",
+        "./workContractConstants.js",
+        "@execufunction/shared",
+        "@execufunction/shared/research",
+        "crypto",
+        "fs",
+        "node:async_hooks",
+        "path"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "client",
+      "source": "packages/exf-mcp-server/src/publicWorkDisplay.ts",
+      "sha256": "f56ab6379686b92603814c3324c831b2185925502e94fdad837f590f00671f4a",
+      "direct_import_specifiers": [
+        "./tools/execution.js"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "mcp",
+      "source": "packages/exf-mcp-server/src/factory.ts",
+      "sha256": "460d80ef36d166dc0189b45edb5f719962e1b41c5a08e67919fd3760dc6daf0b",
+      "direct_import_specifiers": [
+        "../package.json",
+        "./exfClient.js",
+        "./findCapabilityContract.js",
+        "./hostedToolMetadata.js",
+        "./humanGate.js",
+        "./inputValidation.js",
+        "./localCapture/localResumableWorkCaptureProvider.js",
+        "./materializationTools.js",
+        "./publicCatalogProfile.js",
+        "./publicWorkDisplay.js",
+        "./registry/canonicalActionRuntime.js",
+        "./registry/contextCurrentContract.js",
+        "./registry/discovery/shadow.js",
+        "./registry/mcpProjectionRegistry.js",
+        "./registry/mcpToolContractSeed.js",
+        "./requestCapabilityContract.js",
+        "./toolFailureRendering.js",
+        "./tools/catalog.js",
+        "./tools/dispatch.js",
+        "./tools/execution.js",
+        "./ui/viewRegistry.js",
+        "./workLeaseSessionTools.js",
+        "@modelcontextprotocol/core",
+        "@modelcontextprotocol/server",
+        "node:crypto"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "mcp",
+      "source": "packages/exf-mcp-server/src/inputValidation.ts",
+      "sha256": "61a1352fa771bf62e2a5c3ebf76c0f4803994d40c8c273c5c449e11f685dcf66",
+      "direct_import_specifiers": [
+        "./toolFailureRendering.js",
+        "@cfworker/json-schema"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "mcp",
+      "source": "packages/exf-mcp-server/src/tools/catalog.ts",
+      "sha256": "34e66aaeaf0750626d0dec3a036a71d5124250922d7b942fbb66e6486f26a66a",
+      "direct_import_specifiers": [
+        "../aiTools.js",
+        "../approvalTools.js",
+        "../capabilityTools.js",
+        "../contactPlanTools.js",
+        "../crmImportTools.js",
+        "../enrichmentTools.js",
+        "../executionGrantTools.js",
+        "../inputValidation.js",
+        "../leadDiscoveryTools.js",
+        "../materializationTools.js",
+        "../registry/mcpToolContractSeed.js",
+        "../workItemCollaborationTools.js",
+        "../workLeaseSessionTools.js",
+        "./calendar/definitions.js",
+        "./code/definitions.js",
+        "./crm/definitions.js",
+        "./dataset/definitions.js",
+        "./graph/definitions.js",
+        "./notes/definitions.js",
+        "./projects/definitions.js",
+        "./receiptSchemas.js",
+        "./tasks/definitions.js",
+        "./upload/definitions.js",
+        "./vault/definitions.js",
+        "./work/definitions.js"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "mcp",
+      "source": "packages/exf-mcp-server/src/tools/code/definitions.ts",
+      "sha256": "9e0d9638a777bb2f4d927cfdda262798976ef71a46a85d180deeeff4d88c1d2d",
+      "direct_import_specifiers": [
+        "../../registry/mcpToolContractSeed.js",
+        "../defineTools.js",
+        "../receiptSchemas.js"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "mcp",
+      "source": "packages/exf-mcp-server/src/tools/code/handlers.ts",
+      "sha256": "2440e83b82312d8f2a1f23937d989b3042b5134b40b46575c031136823bdc47f",
+      "direct_import_specifiers": [
+        "../../gitService.js",
+        "../execution.js",
+        "../handlerTypes.js",
+        "./definitions.js"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "mcp",
+      "source": "packages/exf-mcp-server/src/tools/dispatch.ts",
+      "sha256": "a74344108c1a1aee4f68b079e5cd5373a0fd559b15adce88802fbf0df98569b2",
+      "direct_import_specifiers": [
+        "../aiTools.js",
+        "../approvalTools.js",
+        "../capabilityTools.js",
+        "../contactPlanTools.js",
+        "../crmImportTools.js",
+        "../enrichmentTools.js",
+        "../executionGrantTools.js",
+        "../exfClient.js",
+        "../leadDiscoveryTools.js",
+        "../materializationTools.js",
+        "../workItemCollaborationTools.js",
+        "../workItemEditContract.js",
+        "../workLeaseSessionTools.js",
+        "./execution.js",
+        "./handlers.js",
+        "node:path"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "mcp",
+      "source": "packages/exf-mcp-server/src/tools/execution.ts",
+      "sha256": "bf24bf940d8cb79bb3b033d98f8f9e311d80b4dc797daa6d207503d257c77954",
+      "direct_import_specifiers": [
+        "../exfClient.js",
+        "../localCapture/localResumableWorkCaptureProvider.js",
+        "../materializationTools.js",
+        "../publicCatalogProfile.js",
+        "../registry/mcpProjectionRegistry.js",
+        "../workLeaseSessionTools.js"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "mcp",
+      "source": "packages/exf-mcp-server/src/tools/graph/definitions.ts",
+      "sha256": "7c75d4e83a9a6e308f09a33372183268beabd60fb473a39f626b7e787408a0ef",
+      "direct_import_specifiers": [
+        "../../registry/entityGraphRuntime.js",
+        "../../registry/mcpToolContractSeed.js",
+        "../datasetQuerySchemas.js",
+        "../defineTools.js",
+        "../receiptSchemas.js"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "mcp",
+      "source": "packages/exf-mcp-server/src/tools/graph/handlers.ts",
+      "sha256": "89e53454a0653a1bf7c99a5e2da9f7a20754b21c07e194baa23435e945f0b8bc",
+      "direct_import_specifiers": [
+        "../execution.js",
+        "../handlerTypes.js",
+        "./definitions.js"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "mcp",
+      "source": "packages/exf-mcp-server/src/tools/notes/definitions.ts",
+      "sha256": "9e3bfe2b416934f38ed4ea8762f3678e367b8cf9780728dc705e4f2535e3344d",
+      "direct_import_specifiers": [
+        "../../registry/mcpToolContractSeed.js",
+        "../defineTools.js",
+        "../receiptSchemas.js"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "mcp",
+      "source": "packages/exf-mcp-server/src/tools/notes/handlers.ts",
+      "sha256": "bbf664151b076d84d854067ef20aa3b16bc8606046de798584b042aba19ad05b",
+      "direct_import_specifiers": [
+        "../execution.js",
+        "../handlerTypes.js",
+        "./definitions.js",
+        "./markdown.js"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "mcp",
+      "source": "packages/exf-mcp-server/src/tools/notes/markdown.ts",
+      "sha256": "616fd691d3e8c1bf26ca3e14dc665cac6a1ca226a802191d81010d4aa28d5a39",
+      "direct_import_specifiers": [],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "mcp",
+      "source": "packages/exf-mcp-server/src/tools/projects/definitions.ts",
+      "sha256": "235485c29cd4811d27b72c8e7bb7f7793f8814cc79f102f01cec8295de986c8a",
+      "direct_import_specifiers": [
+        "../../registry/mcpToolContractSeed.js",
+        "../defineTools.js",
+        "../receiptSchemas.js"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "mcp",
+      "source": "packages/exf-mcp-server/src/tools/projects/handlers.ts",
+      "sha256": "77259136b26ed778398c121e85e6bd9b38c3083b3177f04287c486ef3288f5fe",
+      "direct_import_specifiers": [
+        "../../publicWorkDisplay.js",
+        "../../registry/mcpToolContractSeed.js",
+        "../execution.js",
+        "../handlerTypes.js",
+        "./definitions.js"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "mcp",
+      "source": "packages/exf-mcp-server/src/tools/tasks/definitions.ts",
+      "sha256": "2e061d7cc9560ee8e85f48a2ecf2027b2b8c3976ae18aa3be06831478f79c029",
+      "direct_import_specifiers": [
+        "../../registry/mcpToolContractSeed.js",
+        "../defineTools.js",
+        "../receiptSchemas.js"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "mcp",
+      "source": "packages/exf-mcp-server/src/tools/tasks/handlers.ts",
+      "sha256": "cb87174311bd8d23b0f5a2ac85acea456e411055dab586d5943ea4f169169c3c",
+      "direct_import_specifiers": [
+        "../../exfClient.js",
+        "../execution.js",
+        "../handlerTypes.js",
+        "./definitions.js"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "mcp",
+      "source": "packages/exf-mcp-server/src/tools/work/computeDefinitions.ts",
+      "sha256": "afdfdbe9d8d22f1fb7b340b3850e5dc6ab396b81e4273a5a6dcebcd842a4c7b0",
+      "direct_import_specifiers": [
+        "../defineTools.js",
+        "../receiptSchemas.js"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "mcp",
+      "source": "packages/exf-mcp-server/src/tools/work/definitions.ts",
+      "sha256": "d802a131e94ca467f57a7dcfb24e86c550d3073c5ce33a23a4830bd1275bc5b9",
+      "direct_import_specifiers": [
+        "../../registry/mcpToolContractSeed.js",
+        "../../workContractConstants.js",
+        "../../workItemEditContract.js",
+        "../defineTools.js",
+        "../receiptSchemas.js",
+        "./computeDefinitions.js"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "mcp",
+      "source": "packages/exf-mcp-server/src/tools/work/handlers.ts",
+      "sha256": "671312ad7f99dc934036e7940a19e0007b322d5e56a4d1387be7fb177958c4f0",
+      "direct_import_specifiers": [
+        "../../exfClient.js",
+        "../../publicWorkDisplay.js",
+        "../execution.js",
+        "../handlerTypes.js",
+        "./definitions.js"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/agents/create.ts",
+      "sha256": "4c1fba06bafa30dfa4c0c319846bd10e738cc50232f188a503aa034f0d493b8c",
+      "direct_import_specifiers": [
+        "../../lib/base-command.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/agents/disable.ts",
+      "sha256": "e9dce25e2cf7b3e79a5068087ddf28b05b59ae68afb4f5f66cff8639e9c7f3d7",
+      "direct_import_specifiers": [
+        "../../lib/base-command.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/agents/get.ts",
+      "sha256": "171f859920a5e52468d16692cc6056ce5171ee46703f8aa5d5cc7afde92bac88",
+      "direct_import_specifiers": [
+        "../../lib/base-command.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/agents/list.ts",
+      "sha256": "a176499468fef0c59e0dd57fbf8d06770332f3ed8b68932016b0a59a5f7cf8f9",
+      "direct_import_specifiers": [
+        "../../lib/base-command.js",
+        "../../lib/output.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/agents/update.ts",
+      "sha256": "3bc437e36821cfd77aeb3199c3dfa6e1ad022d75d889a95529d58f4e4e53113e",
+      "direct_import_specifiers": [
+        "../../lib/base-command.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/agents/work.ts",
+      "sha256": "d8803c4ed1d6153baeee01599b1c4f8baa91f65c978a016a397e21681eaad92e",
+      "direct_import_specifiers": [
+        "../../lib/base-command.js",
+        "../../lib/output.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/code/memory/confirm.ts",
+      "sha256": "4d900e5baf68209a3ea72ab5dcce25c5410178d8db18c4ff04b7cc007a1df61a",
+      "direct_import_specifiers": [
+        "../../../lib/base-command.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/code/memory/delete.ts",
+      "sha256": "d76790f58855b6b2035e141959c1fe34402dd49628091194b6e5a635f5fde730",
+      "direct_import_specifiers": [
+        "../../../lib/base-command.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/code/memory/detect-stale.ts",
+      "sha256": "80383f8f096c6954273ef49d592af74e58c1b707d4c01d6e91777b26a4932ca3",
+      "direct_import_specifiers": [
+        "../../../lib/base-command.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/code/memory/edit.ts",
+      "sha256": "f92cbbcdc9bab313ecec6d9bda4112319bad27edd01bb16465964a8dea7fca39",
+      "direct_import_specifiers": [
+        "../../../lib/base-command.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/code/memory/events.ts",
+      "sha256": "20ad2c628be181b97274dcb5f83a66528312fb3633a75b63dbb9d7cf90eb0ef5",
+      "direct_import_specifiers": [
+        "../../../lib/base-command.js",
+        "../../../lib/output.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/code/memory/get.ts",
+      "sha256": "23aa76785ce10e55819f73a9b1bdac94afd013da3e4653dde60908afc5a12622",
+      "direct_import_specifiers": [
+        "../../../lib/base-command.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/code/memory/list.ts",
+      "sha256": "90eeaec89ec895f113e65b41fa39837ae79afd5bffe7b7fd293bf8bc94a15050",
+      "direct_import_specifiers": [
+        "../../../lib/base-command.js",
+        "../../../lib/output.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/code/memory/needs-review.ts",
+      "sha256": "81b13c3367b7617e8a02c34097b5f2f9c501129ec9c0750e10cda2a19f8fa57d",
+      "direct_import_specifiers": [
+        "../../../lib/base-command.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/code/memory/reject.ts",
+      "sha256": "ece19ee61a1aa1af22874ad7533d22a39419886d7dc203e1277ff0206b843dc2",
+      "direct_import_specifiers": [
+        "../../../lib/base-command.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/code/memory/search.ts",
+      "sha256": "87918f7a57a04cac367546f2d5bf13834c4832c7860747b7e18c4965293b3600",
+      "direct_import_specifiers": [
+        "../../../lib/base-command.js",
+        "../../../lib/output.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/code/memory/store.ts",
+      "sha256": "63644bff3f48abfb40cc6c19deb59e27d7811c8cea4df599942bf4397a495478",
+      "direct_import_specifiers": [
+        "../../../lib/base-command.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/code/memory/supersede.ts",
+      "sha256": "c8066df85b2fc7652fc5c7754c842d0a7dc860c91d385cfb2ed3921aaf7d2ef7",
+      "direct_import_specifiers": [
+        "../../../lib/base-command.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/context/current.ts",
+      "sha256": "af94087f2d2d6d96ff7b04d0710f028cf93f488242191a85dc34129825e62eff",
+      "direct_import_specifiers": [
+        "../../lib/base-command.js",
+        "../../lib/config.js",
+        "../../lib/output.js",
+        "../../lib/workspace-context.js",
+        "@oclif/core",
+        "node:path"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/notes/bulk-delete.ts",
+      "sha256": "7cc6979935700dbfb7032bef89e90b8a6ea38b875060e3f457da9a62bcecf231",
+      "direct_import_specifiers": [
+        "../../lib/base-command.js",
+        "../../lib/output.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/notes/create.ts",
+      "sha256": "0e1b4ab7e04708ef17f4b7363d285b447b26539553843dc679ad6f0a20f5ee55",
+      "direct_import_specifiers": [
+        "../../lib/base-command.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/notes/delete.ts",
+      "sha256": "c0fd8cb9c1ec482d0d7d33f1fdbcb73934ca72cc42dbc2ec8c24704aef04c354",
+      "direct_import_specifiers": [
+        "../../lib/base-command.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/notes/get.ts",
+      "sha256": "6f9e6f83d7d5727f491306a6ed2b830708263e9c0242e61ac6486c52fbbc9e55",
+      "direct_import_specifiers": [
+        "../../lib/base-command.js",
+        "../../lib/output.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/notes/list.ts",
+      "sha256": "f31c5ea005b766fc8295ad2e16276a0e1be6bda3775fd97548c7c8759992aa3a",
+      "direct_import_specifiers": [
+        "../../lib/base-command.js",
+        "../../lib/output.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/notes/search.ts",
+      "sha256": "f282b99c5a2b303ce513dd902c8b5cd3883c3cae95e8810d37ba4214c789fbdd",
+      "direct_import_specifiers": [
+        "../../lib/base-command.js",
+        "../../lib/output.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/notes/update.ts",
+      "sha256": "d41b79148a1a2e5c83ca11d4156f1e967a61ebcc38c0068716a385a8b0457c8d",
+      "direct_import_specifiers": [
+        "../../lib/base-command.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/projects/archive.ts",
+      "sha256": "87605ba27f2e01b768fa701416b23a2f6e54e8212db69152b91d71e56975c07c",
+      "direct_import_specifiers": [
+        "../../lib/base-command.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/projects/context.ts",
+      "sha256": "d35ffb808b64801a0cb47dd8f2d3c696763998e3881e088893405cf1c2c679e9",
+      "direct_import_specifiers": [
+        "../../lib/base-command.js",
+        "../../lib/output.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/projects/create.ts",
+      "sha256": "244bbc54de61435f0e4a460013012998f8cf7f0d7d48dcc2e10d3db0fee4bc92",
+      "direct_import_specifiers": [
+        "../../lib/base-command.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/projects/list.ts",
+      "sha256": "710ae670e29312705bdd07780b415aab8d91664bbccc71375e781cd947bbc619",
+      "direct_import_specifiers": [
+        "../../lib/base-command.js",
+        "../../lib/output.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/projects/planning-recompute.ts",
+      "sha256": "185c7e90574ecb9c43f37c4b9fccf405b4d981458544689b266d0778e6589bb0",
+      "direct_import_specifiers": [
+        "../../lib/base-command.js",
+        "../../lib/output.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/projects/planning.ts",
+      "sha256": "2b7e8a4fab066c790020ebb1eac3dafa7074254d01904a6a24d415b3db005a43",
+      "direct_import_specifiers": [
+        "../../lib/base-command.js",
+        "../../lib/output.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/projects/update.ts",
+      "sha256": "da59efbb96bde2be8ed7e90b55309ad73836653b21a1f887fd940b40abd4e4fc",
+      "direct_import_specifiers": [
+        "../../lib/base-command.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/tasks/bulk-delete.ts",
+      "sha256": "a228d87b728376cca7361e3cf21a9d9a0b184ba0ad2ed73727f6756421762e03",
+      "direct_import_specifiers": [
+        "../../lib/base-command.js",
+        "../../lib/output.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/tasks/complete.ts",
+      "sha256": "34f73391d6a808cb27242c8f2300d18c457dfce21bc6aed866cc656bbb3a52ce",
+      "direct_import_specifiers": [
+        "../../lib/base-command.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/tasks/coupling-create.ts",
+      "sha256": "f07f12eeb191517b0c0af70517375a964b917ba7e42d6ba1df9c2889158470ec",
+      "direct_import_specifiers": [
+        "../../lib/base-command.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/tasks/coupling-delete.ts",
+      "sha256": "6799582839ef4d6d07e932fc5bada02c02a62f85d5f916935205841eba18a05f",
+      "direct_import_specifiers": [
+        "../../lib/base-command.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/tasks/coupling-list.ts",
+      "sha256": "44e4f599a5d634b168252826b5f6d461a7a39fb66929e0824d809a3983b9bcb8",
+      "direct_import_specifiers": [
+        "../../lib/base-command.js",
+        "../../lib/output.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/tasks/create.ts",
+      "sha256": "3ed07fc95390beb8909e0dfb11162f9c9230642be0cb310b52825c6308bba70c",
+      "direct_import_specifiers": [
+        "../../lib/base-command.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/tasks/delete.ts",
+      "sha256": "1ff0dc37a622f856730f8d643e9560c0b0a119a818b7d7785584ebb3560618c1",
+      "direct_import_specifiers": [
+        "../../lib/base-command.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/tasks/get.ts",
+      "sha256": "84ed086a180f08218d77bce534591d8b7131954b310184f3bc5c28b7e3fd542b",
+      "direct_import_specifiers": [
+        "../../lib/base-command.js",
+        "../../lib/output.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/tasks/list.ts",
+      "sha256": "db3cae3745f1824b84dbe25022c161e9510895adc85a5e4651847855dcbfd121",
+      "direct_import_specifiers": [
+        "../../lib/base-command.js",
+        "../../lib/collection-navigation.js",
+        "../../lib/output.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/tasks/planning-update.ts",
+      "sha256": "015207bf2986699c7f6e5c865e8c06983c6ca356c6297d2cf3012970020536e7",
+      "direct_import_specifiers": [
+        "../../lib/base-command.js",
+        "../../lib/output.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/tasks/update.ts",
+      "sha256": "063b8bd1703857672b31be5d82b2f7c6c1c891dfb7603b8fbb8f0ebd1c24b281",
+      "direct_import_specifiers": [
+        "../../lib/base-command.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/work/a2a/cancel.ts",
+      "sha256": "aa558274ef95fefb55febc08c5a65ab3fdad910f2c2321689f1b4017d185fcdf",
+      "direct_import_specifiers": [
+        "../../../lib/base-command.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/work/a2a/continue.ts",
+      "sha256": "6845cf7e15958f21254c495a82ca14e2fdf35547d99ed075b3f54c4b7a788177",
+      "direct_import_specifiers": [
+        "../../../lib/base-command.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/work/a2a/recover.ts",
+      "sha256": "fbda1eb656619ea4990eb177bee3cc25026f6e548afde384472b3feb78b46337",
+      "direct_import_specifiers": [
+        "../../../lib/base-command.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/work/a2a/review.ts",
+      "sha256": "db80b5e3ec56504daa55d528809e68ed124ce600fb394c8d1f9af822bc0c0739",
+      "direct_import_specifiers": [
+        "../../../lib/base-command.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/work/a2a/run.ts",
+      "sha256": "9db267ec29c32a132ac0ea2ddf767da5b3a81476d1c328c212f51880b2c5f527",
+      "direct_import_specifiers": [
+        "../../../lib/base-command.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/work/a2a/send.ts",
+      "sha256": "04b4bef2e13a7a382641d907da8fafeb5f07273ed5eb4d5099347101bcb950a1",
+      "direct_import_specifiers": [
+        "../../../lib/base-command.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/work/a2a/status.ts",
+      "sha256": "b57dafd3ef44112d9f20ddf21adffa4f7aa6dd6d255ee302d4873bac0facb404",
+      "direct_import_specifiers": [
+        "../../../lib/base-command.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/work/answer.ts",
+      "sha256": "5aab052a7968a3c50def39a4dff54b5b6f593b778a4a94af44abb8f169236375",
+      "direct_import_specifiers": [
+        "../../lib/work-runtime-command.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/work/approve.ts",
+      "sha256": "695088d8de853a927cf79f76b2e6d1c5013fde445316ebbb328e799bea72b208",
+      "direct_import_specifiers": [
+        "../../lib/work-runtime-command.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/work/attach.ts",
+      "sha256": "94c60df96c26004b04ef059caa881c1cdc15bdbbeab0a56abcc484371b0246ec",
+      "direct_import_specifiers": [
+        "../../lib/work-runtime-command.js",
+        "../../lib/work-runtime.js",
+        "@oclif/core",
+        "node:readline"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/work/block.ts",
+      "sha256": "8f0929fd034db4db5975c18e195e74299c023f7cbac7570675c5ef0e8c924733",
+      "direct_import_specifiers": [
+        "../../lib/work-action.js"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/work/cancel.ts",
+      "sha256": "8199671959bf06c7a9e896e02199cb632697edd0cf6a7d37ef5a13b9614c5575",
+      "direct_import_specifiers": [
+        "../../lib/work-action.js"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/work/claim.ts",
+      "sha256": "ffa5a257f782caf63b65ccc1244863d59f74900721e549157a813b0f27eb73cc",
+      "direct_import_specifiers": [
+        "../../lib/base-command.js",
+        "../../lib/work-lease-session.js",
+        "../../lib/workspace-context.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/work/collaboration/acknowledge.ts",
+      "sha256": "d7ab2cfa3ed7c48b46e7f8900beca6338fe449dc5c91e12c07adb454b02cf383",
+      "direct_import_specifiers": [
+        "../../../lib/base-command.js",
+        "../../../lib/work-collaboration.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/work/collaboration/events.ts",
+      "sha256": "5b672a8520a2506b3ca27c8042c4e84235aa52de9c16cf3ce35e93ce43e825c6",
+      "direct_import_specifiers": [
+        "../../../lib/base-command.js",
+        "../../../lib/work-collaboration.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/work/collaboration/participant/add.ts",
+      "sha256": "532c58c7272500494057cb56be9a639d7878fb985f9c4b26cf0e7791aa312e38",
+      "direct_import_specifiers": [
+        "../../../../lib/base-command.js",
+        "../../../../lib/work-collaboration.js",
+        "@oclif/core",
+        "@siftable/mcp-server/dist/exfClient.js"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/work/collaboration/participant/remove.ts",
+      "sha256": "1449337250f7cacfb4909b0f5d4d2f4c257fa832af360ad059888bf45ebbfbec",
+      "direct_import_specifiers": [
+        "../../../../lib/base-command.js",
+        "../../../../lib/work-collaboration.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/work/collaboration/participants.ts",
+      "sha256": "c006d354d6b8fb3920f96d9beee87966dd43b994da5db0281cea896c80a89a38",
+      "direct_import_specifiers": [
+        "../../../lib/base-command.js",
+        "../../../lib/work-collaboration.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/work/collaboration/send.ts",
+      "sha256": "fbfc8207f3414ac203cbd65bfe1424c3b3290ff9f166f3431b1ebe5c6144edae",
+      "direct_import_specifiers": [
+        "../../../lib/base-command.js",
+        "../../../lib/work-collaboration.js",
+        "@oclif/core",
+        "@siftable/mcp-server/dist/exfClient.js"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/work/collaboration/wait.ts",
+      "sha256": "c950547dda20acc1f85d0212dca73422bc73d5953876d4092b0250421efc5d98",
+      "direct_import_specifiers": [
+        "../../../lib/base-command.js",
+        "../../../lib/work-collaboration.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/work/complete.ts",
+      "sha256": "487fae2646f1d93d009cb9199d2a8eaa4742f7cb3a0fe5fd0fa15b9961aca429",
+      "direct_import_specifiers": [
+        "../../lib/work-action.js"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/work/contract/check.ts",
+      "sha256": "10ad48258c97acca6522dbac6290e1eadbc870ad36bb8cca692b6e9eb4018866",
+      "direct_import_specifiers": [
+        "../../../lib/base-command.js",
+        "../../../lib/output.js",
+        "../../../lib/work-contract.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/work/coverage-shadow.ts",
+      "sha256": "c0d8fb2c28eb48065847f3967833a0c991931faa1c983bbd3cde3630aa274c56",
+      "direct_import_specifiers": [
+        "../../lib/base-command.js",
+        "../../lib/work-coverage/bind.js",
+        "../../lib/work-coverage/payload.js",
+        "../../lib/work-coverage/run.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [
+        "packages/exf-cli/src/commands/work/coverage-shadow.test.ts"
+      ],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/work/create.ts",
+      "sha256": "d4f3c35b56d9a114e83df6ded979a57646b508b386ea8243d017a7ee5f03d7b4",
+      "direct_import_specifiers": [
+        "../../lib/base-command.js",
+        "../../lib/work-contract.js",
+        "../../lib/work-dependencies.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/work/dependencies/get.ts",
+      "sha256": "090a030d500516b62755e75f936ebe0ba78d1a32907dfe756b0bd5ee01cebb8b",
+      "direct_import_specifiers": [
+        "../../../lib/base-command.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/work/dependencies/set.ts",
+      "sha256": "0ea6e366ee1c0193ed4172a91432e572402aa437ef358ae04f4e7937c6cec6f9",
+      "direct_import_specifiers": [
+        "../../../lib/base-command.js",
+        "../../../lib/work-dependencies.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/work/dependency-policy/get.ts",
+      "sha256": "a01ae5d24e51042d789b79e281ffedf54fe8a052b3983888981b1cb50ee59895",
+      "direct_import_specifiers": [
+        "../../../lib/base-command.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/work/dependency-policy/set.ts",
+      "sha256": "e763355ab71ed3d53a98609977afd2c0de0ea92010cbaa024715f9b2bb28bcf5",
+      "direct_import_specifiers": [
+        "../../../lib/base-command.js",
+        "../../../lib/work-dependencies.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/work/edit.ts",
+      "sha256": "d801a8fc6055dd74ce143c0af88b98ddc598d3c50a337e297254be744f7f1b7d",
+      "direct_import_specifiers": [
+        "../../lib/base-command.js",
+        "../../lib/work-edit-contract.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/work/evidence.ts",
+      "sha256": "ede1a45fdd7f7860cfb24f5d520e01400a39d70026119cb92fc9721137148511",
+      "direct_import_specifiers": [
+        "../../lib/base-command.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [
+        "packages/exf-cli/src/commands/work/evidence.test.ts"
+      ],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/work/fail.ts",
+      "sha256": "c8b1703fccb61c61a2561776b7997a26d33981a9b971f27b459b26455c8ab2c9",
+      "direct_import_specifiers": [
+        "../../lib/work-action.js"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/work/get.ts",
+      "sha256": "b556a5bf16ae407e162e05d64274282715e4f10daf37c5c299761f35d8ea89b7",
+      "direct_import_specifiers": [
+        "../../lib/base-command.js",
+        "../../lib/work-dependencies.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/work/heartbeat.ts",
+      "sha256": "9484846f6a2b1881cd4bb3b484da87e855f98a9fd1b37f901e8b67090f691762",
+      "direct_import_specifiers": [
+        "../../lib/work-action.js"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/work/interrupt.ts",
+      "sha256": "e949d4da47e86bccfcbc5c10cc182681c1230a74c69134984d441cd92f38af5e",
+      "direct_import_specifiers": [
+        "../../lib/work-runtime-command.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/work/list.ts",
+      "sha256": "c6ce2339fdfd7bf72b2dfff307f94e171aa26fbdfe1b4b1a6b8b43fef82d88d9",
+      "direct_import_specifiers": [
+        "../../lib/base-command.js",
+        "../../lib/collection-navigation.js",
+        "../../lib/output.js",
+        "../../lib/work-dependencies.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [
+        "packages/exf-cli/src/commands/work/list.test.ts"
+      ],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/work/release.ts",
+      "sha256": "bf2bb6b57a8ff6170a111c6e04dde4207ee8152064bc2a224e1ca2b7fe93179d",
+      "direct_import_specifiers": [
+        "../../lib/work-action.js"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/work/requeue.ts",
+      "sha256": "fc0d2a20785e2c877c109da9c38a7c6aa673befaf4f1cf739ac40d7c6362640f",
+      "direct_import_specifiers": [
+        "../../lib/work-action.js"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/work/review.ts",
+      "sha256": "56c9a4c7be72daadb633f51ef89086ca88725de6e430f9d1bf688b7031eede6a",
+      "direct_import_specifiers": [
+        "../../lib/work-action.js"
+      ],
+      "adjacent_matching_tests": [
+        "packages/exf-cli/src/commands/work/review.test.ts"
+      ],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/work/revisions.ts",
+      "sha256": "d45511cd64619759f7e41dcd17c3c76a8cdc0102875623a6fa937c8587446236",
+      "direct_import_specifiers": [
+        "../../lib/base-command.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/work/send.ts",
+      "sha256": "2eb5682c8b405f74515caeecb5bd800e83f3672bd5254704dfea95369d5efaa1",
+      "direct_import_specifiers": [
+        "../../lib/work-runtime-command.js",
+        "../../lib/work-runtime.js",
+        "@oclif/core",
+        "node:fs"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/work/start.ts",
+      "sha256": "3bb9345bd7b49ab0c3232672626dc3c969df55a23125de3e3e046ca766a2c6e0",
+      "direct_import_specifiers": [
+        "../../lib/work-action.js"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/work/verification/evidence.ts",
+      "sha256": "3deacfdd7fba86aeaa7548c9151ebe619077385f7b1cd3c4a8af73d26ee97ccd",
+      "direct_import_specifiers": [
+        "../../../lib/base-command.js",
+        "../../../lib/work-verification.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/work/verification/history.ts",
+      "sha256": "82251bdf359eb7caf50e0f9a5d4a0bdc81c96655d444e0b1a45b8cef60955a2b",
+      "direct_import_specifiers": [
+        "../../../lib/base-command.js",
+        "../../../lib/work-verification.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/work/verification/plan.ts",
+      "sha256": "6170b4ed8839e9d0e41b0d26bf24cbd5ea17cd55ac9e4658a774d002a902a931",
+      "direct_import_specifiers": [
+        "../../../lib/base-command.js",
+        "../../../lib/work-verification.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/work/verification/revise.ts",
+      "sha256": "0e731e5138a9e55224e28716db701ace528322224d881ead160eb9774a8658e1",
+      "direct_import_specifiers": [
+        "../../../lib/base-command.js",
+        "../../../lib/work-verification.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/work/verify.ts",
+      "sha256": "7fc722928fc02b75068f437ff0f2edc99ce8e6ebbbdf089f6e8a4d5ba02d5cb1",
+      "direct_import_specifiers": [
+        "../../lib/base-command.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [
+        "packages/exf-cli/src/commands/work/verify.test.ts"
+      ],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/commands/work/watch.ts",
+      "sha256": "82e48f9b1e8d6da0f880c1081a83621bd2f98e99e1891fc7278b2504af18f62e",
+      "direct_import_specifiers": [
+        "../../lib/work-runtime-command.js",
+        "@oclif/core"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/lib/base-command.ts",
+      "sha256": "c4efbf2ee02d539e2bc6704489403e6743b6279ad8263260863bcdab2db249ee",
+      "direct_import_specifiers": [
+        "./auth.js",
+        "./output.js",
+        "./workspace-context.js",
+        "@oclif/core",
+        "@siftable/mcp-server/dist/exfClient.js",
+        "node:crypto",
+        "node:fs"
+      ],
+      "adjacent_matching_tests": [
+        "packages/exf-cli/src/lib/base-command.exit-code.test.ts"
+      ],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/lib/work-action.ts",
+      "sha256": "5310423867d54105b9b62f0d9de544ca02523e863155e368a1a768e8729d8356",
+      "direct_import_specifiers": [
+        "./base-command.js",
+        "./work-coverage/bind.js",
+        "./work-coverage/run.js",
+        "./work-lease-session.js",
+        "./workspace-context.js",
+        "@oclif/core",
+        "@siftable/mcp-server/dist/exfClient.js"
+      ],
+      "adjacent_matching_tests": [
+        "packages/exf-cli/src/lib/work-action.session.test.ts"
+      ],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    },
+    {
+      "module": "cli",
+      "source": "packages/exf-cli/src/lib/work-lease-session.ts",
+      "sha256": "67d46931d6e2dac3037d8953aad79a01c0ba0afdd8590630bc8791da061613d4",
+      "direct_import_specifiers": [
+        "./config.js",
+        "node:crypto",
+        "node:fs/promises",
+        "node:path"
+      ],
+      "adjacent_matching_tests": [],
+      "disposition": "candidate; apply cuts and exclusions in plan before copying"
+    }
+  ]
+}

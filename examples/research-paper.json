@@ -1,0 +1,13 @@
+{
+  "type": "research.paper",
+  "version": 1,
+  "schema": {
+    "type": "object",
+    "properties": {
+      "title": {"type": "string", "minLength": 1},
+      "year": {"type": "integer", "minimum": 1900}
+    },
+    "required": ["title"],
+    "additionalProperties": false
+  }
+}

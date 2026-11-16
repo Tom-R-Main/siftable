@@ -1,0 +1,31 @@
+{
+  "name": "siftable-headless",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -b && node scripts/copy-modules.mjs",
+    "typecheck": "tsc -b --pretty false",
+    "test": "npm run build && node --test tests/*.test.mjs",
+    "test:acceptance": "npm run build && node --test --test-concurrency=1 tests/acceptance/*.test.mjs",
+    "sift": "node packages/cli/dist/index.js",
+    "local": "node scripts/local.mjs",
+    "test:isolated": "npm run build && node scripts/acceptance.mjs",
+    "format": "prettier --write \"packages/*/src/**/*.ts\" \"apps/*/src/**/*.ts\" \"scripts/*.mjs\" \"tests/**/*.mjs\"",
+    "format:check": "prettier --check \"packages/*/src/**/*.ts\" \"apps/*/src/**/*.ts\" \"scripts/*.mjs\" \"tests/**/*.mjs\""
+  },
+  "devDependencies": {
+    "@types/express": "5.0.6",
+    "@types/node": "22.20.5",
+    "@types/pg": "8.23.1",
+    "prettier": "3.10.1",
+    "typescript": "7.0.2"
+  }
+}

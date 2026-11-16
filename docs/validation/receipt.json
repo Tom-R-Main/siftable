@@ -1,0 +1,41 @@
+{
+  "date": "2026-11-16",
+  "status": "checked-local",
+  "published": false,
+  "imageId": "sha256:a8e99146c46890331bc5a1f770c1115444dbe829ada03685fdd06c947a12f4c4",
+  "nodeRuntime": "22.23.3",
+  "databaseImageDigest": "pgvector/pgvector@sha256:d2ef61f42ef767baa5a1475393303cc235bcd92febd9d7014eddb48b41f3bad0",
+  "integrationScenarios": 9,
+  "nodeIntegrationTestCountIncludingParent": 10,
+  "unitTests": 3,
+  "failures": 0,
+  "skipped": 0,
+  "acceptanceNetwork": "Docker internal network, no external route",
+  "runtimeSourceHashesMatchedImage": {
+    "apps/server/src/index.ts": "db194076f99babe4cdd605cf326fa5b795b3746b97b16b80fee4006f996065d4",
+    "packages/cli/src/index.ts": "b388ba02c3d2b75360e0de3eeb663be23c21b36e8138becbdc8145b4a4efe361",
+    "packages/client/src/index.ts": "4f74af79a1d743919849edf497849f000531dd59cabc71617e2faf60282bec43",
+    "packages/contracts/src/index.ts": "1f98db00e4102a554aa238ece6bcfca47c32d574d3ca483f638faaa37b13a853",
+    "packages/core/src/claimDigest.ts": "d35d0b1daa18a25a13d8375bd7fb8972ab345960110cf59b0c55e9083c6a67bb",
+    "packages/core/src/content.ts": "92bde39e6fd04f963a039fa1b493b2e1c83b4f3c156b032340fa448ab6148768",
+    "packages/core/src/database.ts": "d3bbbe3bca7785c0bd2b5a1c979e842e613b5648bc3d7703673e2a18f529687a",
+    "packages/core/src/extensions.ts": "b05ccd6cb6bf2fa6613a25e734b747d0182c293e50e0adfa38618d33b6bb68d7",
+    "packages/core/src/helpers.ts": "45331a35ced32985af7281a9f68d5a7997be32ebaae9b428b674e1a1f87e7058",
+    "packages/core/src/index.ts": "1f7772fc5d87046a9f925c8bbe6b77fca3a203feaed9359d37eb700def974dad",
+    "packages/core/src/secretPolicy.ts": "ae07e7f191ee01e8cfce67b64983462eaea293e88279b5513f19ef2f33f87e08",
+    "packages/core/src/verificationCoverage.ts": "93680b18aad235976f33ae3de51018a79276138b2bc1570ae3c616e8e1299d05",
+    "packages/core/src/verificationTypes.ts": "357c3caa66fa8b6cc0d5ad93d85a823b14730d7a28a9d2f64b185a2c9a1df4a1",
+    "packages/core/src/work.ts": "a218c0bc5b669089f1d07b1e2bd5eda6d7dd5d27f2992e662907837541e495a5",
+    "packages/mcp/src/index.ts": "2f7d4dab017a395b3e524b47369211d9c8ca317cee6a09c77c804222e905d5fa"
+  },
+  "reportHashes": {
+    "headless.tap": "bdfb33214e64604fb4b1b54226dd5a30b6399aa1cee66bb2db2b71dd2faf45be",
+    "unit.tap": "ac460ff6065dac7b2046dc1ee9db233926a5eadd6ed4d306a6b1fece2efa3e1d"
+  },
+  "limitations": [
+    "No independent external code review or public release",
+    "First extraction slice, not complete hosted behavior parity",
+    "No backup/restore or production data migration proof",
+    "No workload throughput qualification"
+  ]
+}

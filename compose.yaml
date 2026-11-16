@@ -1,0 +1,44 @@
+name: siftable-headless
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: siftable
+      POSTGRES_PASSWORD_FILE: /run/sift/postgres-password
+    volumes:
+      - database:/var/lib/postgresql/data
+      - ./.local/postgres-password:/run/sift/postgres-password:ro
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U postgres -d siftable]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    networks: [private]
+  server:
+    build: .
+    image: siftable-headless:local
+    environment:
+      SIFT_DATABASE_URL_FILE: /run/sift/runtime-db-url
+    volumes:
+      - ./.local/runtime-db-url:/run/sift/runtime-db-url:ro
+    ports: ["127.0.0.1:${SIFT_PORT:-8088}:8080"]
+    depends_on:
+      db: {condition: service_healthy}
+    networks: [private, local]
+  admin:
+    image: siftable-headless:local
+    profiles: [tools]
+    entrypoint: [node, packages/cli/dist/index.js]
+    environment:
+      SIFT_ADMIN_DATABASE_URL_FILE: /run/sift/admin-db-url
+      SIFT_RUNTIME_PASSWORD_FILE: /run/sift/runtime-password
+    volumes: ["./.local:/run/sift"]
+    depends_on:
+      db: {condition: service_healthy}
+    networks: [private]
+networks:
+  private: {internal: true}
+  local: {}
+volumes:
+  database:

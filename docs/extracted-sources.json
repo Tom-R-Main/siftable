@@ -1,0 +1,23 @@
+{
+  "upstreamCommit": "fb762fd2be4ec62e8ebd8048d75721fbb05ad5c6",
+  "files": [
+    {
+      "source": "exf-app/src/services/agentWorkVerificationCoverage.ts",
+      "sourceSha256": "4af269c2ea419801ea31282278aac53dc166d6162dea32edc9ded196fd253f87",
+      "destination": "packages/core/src/verificationCoverage.ts",
+      "destinationSha256": "93680b18aad235976f33ae3de51018a79276138b2bc1570ae3c616e8e1299d05"
+    },
+    {
+      "source": "exf-app/src/services/agentWorkClaimDigest.ts",
+      "sourceSha256": "d35d0b1daa18a25a13d8375bd7fb8972ab345960110cf59b0c55e9083c6a67bb",
+      "destination": "packages/core/src/claimDigest.ts",
+      "destinationSha256": "d35d0b1daa18a25a13d8375bd7fb8972ab345960110cf59b0c55e9083c6a67bb"
+    },
+    {
+      "source": "packages/shared/src/types/agentWorkSecrets.ts",
+      "sourceSha256": "6d3edce38fe2ce33f45504c3f59914b63284fc84683ba51c0c1f21e9d931e399",
+      "destination": "packages/core/src/secretPolicy.ts",
+      "destinationSha256": "ae07e7f191ee01e8cfce67b64983462eaea293e88279b5513f19ef2f33f87e08"
+    }
+  ]
+}

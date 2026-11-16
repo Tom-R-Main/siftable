@@ -1,0 +1,8 @@
+{
+  "id": "work",
+  "version": 1,
+  "requires": [
+    "foundation"
+  ],
+  "migration": "001.sql"
+}
