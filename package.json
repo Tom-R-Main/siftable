@@ -18,8 +18,10 @@
     "sift": "node packages/cli/dist/index.js",
     "local": "node scripts/local.mjs",
     "test:isolated": "npm run build && node scripts/acceptance.mjs",
-    "format": "prettier --write \"packages/*/src/**/*.ts\" \"apps/*/src/**/*.ts\" \"scripts/*.mjs\" \"tests/**/*.mjs\"",
-    "format:check": "prettier --check \"packages/*/src/**/*.ts\" \"apps/*/src/**/*.ts\" \"scripts/*.mjs\" \"tests/**/*.mjs\""
+    "format": "prettier --write \"packages/*/src/**/*.ts\" \"apps/*/src/**/*.ts\" \"scripts/**/*.mjs\" \"tests/**/*.mjs\"",
+    "format:check": "prettier --check \"packages/*/src/**/*.ts\" \"apps/*/src/**/*.ts\" \"scripts/**/*.mjs\" \"tests/**/*.mjs\"",
+    "example:first-work": "node scripts/first-work.mjs",
+    "test:readme": "node scripts/readme-check.mjs"
   },
   "devDependencies": {
     "@types/express": "5.0.6",

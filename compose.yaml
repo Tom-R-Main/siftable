@@ -29,7 +29,7 @@ services:
   admin:
     image: siftable-headless:local
     profiles: [tools]
-    entrypoint: [node, packages/cli/dist/index.js]
+    entrypoint: [sh, scripts/admin.sh]
     environment:
       SIFT_ADMIN_DATABASE_URL_FILE: /run/sift/admin-db-url
       SIFT_RUNTIME_PASSWORD_FILE: /run/sift/runtime-password

@@ -13,7 +13,7 @@ import {
   Pool,
   databaseUrlFromEnvironment,
 } from '@siftable/core';
-import { SiftClient } from '@siftable/client';
+import { SiftClient, readCredentials } from '@siftable/client';
 const { positionals, values } = parseArgs({
   allowPositionals: true,
   options: {
@@ -81,6 +81,7 @@ async function main() {
     command &&
     ![
       'catalog',
+      'config.info',
       'init',
       'install',
       'credential',
@@ -97,6 +98,8 @@ async function main() {
     print({
       usage: 'sift <operation> --config <credential-file> --json <object> [--key <stable-key>]',
       operationHelp: 'sift <operation> --help (input schema; no credential or service required)',
+      configInfo:
+        'sift config.info --config <file> (local identity metadata only; no token or authority check)',
       administration: [
         'init --modules projects,context,work,planning,extensions --output <credential-file> --url http://127.0.0.1:8080',
         'modules-plan --modules context',
@@ -179,9 +182,13 @@ async function main() {
     );
     return;
   }
-  const client = await SiftClient.fromFile(
-    resolve(values.config ?? process.env.SIFT_CONFIG ?? '.local/owner.json'),
-  );
+  const configPath = resolve(values.config ?? process.env.SIFT_CONFIG ?? '.local/owner.json');
+  if (name === 'config.info') {
+    const { ownerId, principalId, scopeId } = await readCredentials(configPath);
+    print({ ownerId, principalId, scopeId });
+    return;
+  }
+  const client = await SiftClient.fromFile(configPath);
   if (name === 'catalog') {
     print(await client.catalog());
     return;

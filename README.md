@@ -6,7 +6,18 @@ This is a local extraction with a tested core lifecycle and recovery path, not t
 
 ## Start locally
 
-Prerequisites: Docker Compose and Node.js 22 or newer. Node 22.23.3 is the tested container runtime. Builds need network access to obtain dependencies/images; ordinary operation does not call external services.
+Start in the repository root of a source checkout or extracted source archive. No global `sift` installation, `.env`, existing database or private configuration is needed.
+
+Prerequisites: Node.js 22 or newer (including npm), Docker Engine running, and the Docker Compose v2+ plugin. Your normal OS user must be able to run Docker without `sudo` (Docker Desktop provides this on macOS; Linux needs configured Docker access). Run the following checks as that user. Node 22.23.3 is the tested container runtime. Builds need network access to obtain dependencies/images; ordinary operation does not call external services.
+
+```sh
+node --version
+npm --version
+docker info
+docker compose version
+```
+
+Use a writable checkout and an available loopback port 8088. Run setup without `sudo`:
 
 ```sh
 npm ci
@@ -15,6 +26,10 @@ npm run local
 ```
 
 The server listens at `http://127.0.0.1:8088`. Bootstrap creates random database passwords and an owner credential in protected, ignored `.local/` files. It never prints them. The database is accessible only on the private Docker network. The server has a second network for loopback port publishing; this Compose configuration is not an outbound firewall.
+
+Compose administration runs as the owner of the mounted `.local/` directory so credentials and backups remain readable by the host user while retaining private permissions. Keep this directory private. Do not share credential files or paste their contents into a terminal. `config.info` below prints only identity IDs.
+
+For another port, set `export SIFT_PORT=18088` **before the first setup**, and retain that value in shells running Compose, credential creation and examples. Changing it later does not rewrite existing credential URLs. Compose uses the fixed project name `siftable-headless`; use one installation per Docker daemon. A second checkout on the same daemon is not an isolated installation.
 
 Start with only the modules you want on a fresh installation:
 
@@ -32,6 +47,7 @@ Inspect the actual catalog and module state:
 npm run sift -- catalog --config .local/owner.json
 npm run sift -- modules.list --config .local/owner.json
 npm run sift -- schema.inspect --config .local/owner.json
+npm run sift -- config.info --config .local/owner.json
 ```
 
 Discover the input contract for an operation before calling it:
@@ -55,6 +71,25 @@ npm run sift -- work.create --config .local/owner.json --key work-1 \
 
 Each mutation requires a stable request key. Retry identical input with the same key after a lost response. Changing the input requires a different key. `--file input.json` can replace `--json` for larger payloads.
 
+## First complete workflow
+
+After default setup (or a setup containing `projects,context,work`), run:
+
+```sh
+npm run example:first-work
+```
+
+The [readable example](scripts/first-work.mjs) creates a project, source note and work item through the CLI; issues a temporary scoped agent credential; claims through CLI; then launches a real stdio MCP client to read the note, build context, submit evidence and request review. It asserts that the note matches, request-key replay returns the same work, and the agent cannot accept its own work through either CLI or MCP. Finally the owner CLI records scripted acceptance and the temporary credential is revoked. No model or external MCP app is needed.
+
+Each run creates a new example project. Records remain available; IDs and the result are saved in `.local/first-work.json`. This is an executable tutorial and technical check, not independent human acceptance. To inspect its work without copying a placeholder ID:
+
+```sh
+WORK_ID=$(node -p 'JSON.parse(require("fs").readFileSync(".local/first-work.json","utf8")).workId')
+npm run sift -- work.get --json "{\"id\":\"$WORK_ID\"}"
+```
+
+Minimal `context`-only or `work`-only installations intentionally cannot run this combined example. Their available operations are shown by `catalog`.
+
 ## Modules
 
 | Module | Requires | Implemented in this milestone |
@@ -74,13 +109,17 @@ Module enablement, tool presentation and credential permissions are separate. Di
 
 ## Agents, evidence and review
 
-Create an agent credential using the owner ID returned by bootstrap:
+Create an agent credential using `ownerId` from `config.info` (also returned by the first bootstrap). This command reads local identity metadata; it does not verify current server authority. Get the ID without displaying the credential:
+
+```sh
+OWNER_ID=$(node packages/cli/dist/index.js config.info --config .local/owner.json | node -pe 'JSON.parse(require("fs").readFileSync(0,"utf8")).ownerId')
+```
 
 ```sh
 docker compose run --rm admin credential \
-  --owner-id OWNER_UUID --role agent \
+  --owner-id "$OWNER_ID" --role agent \
   --permissions foundation:read,projects:read,context:read,context:write,work:read,work:write \
-  --output /run/sift/worker.json --url http://127.0.0.1:8088
+  --output /run/sift/worker.json --url "http://127.0.0.1:${SIFT_PORT:-8088}"
 ```
 
 Use `.local/worker.json` on the host. `work.claim` stores the generated lease secret in the credential directory's protected `leases/` store. Later CLI/MCP mutations use that same custody automatically; secrets do not appear in tool output. The files must be protected from other OS users. These credentials distinguish API authority; they do not sandbox processes running as the same OS user.
@@ -140,6 +179,8 @@ Configure any client supporting MCP over stdio. Use absolute paths:
 
 The initial transport is stdio MCP connecting to the local HTTP API. HTTP MCP transport and MCP Apps are not included.
 
+The `example:first-work` command above is a working MCP client example. Keep `worker.json` for your own MCP app separate from the example's temporary, revoked credential. Use the same credential path in CLI and MCP when continuing a claim so both find the protected lease files.
+
 ## Extend the schema
 
 Define a namespaced object without modifying application code:
@@ -167,6 +208,14 @@ npm run test:isolated
 
 `test:isolated` builds a test image, creates its own randomly named Docker network and disposable database, runs real CLI/server/MCP subprocesses on Node 22, and removes the containers/network. The network has no external route. The integration scenarios cover independent schemas, version-1 upgrades, CRUD/deletion/recovery, claims, evidence, handoff, scope enforcement, extensions, work retries/artifacts, backup integrity and restart. The TAP report is saved under `.local/validation/`.
 
+Maintainers can reproduce the clean-environment README gate after committing their changes:
+
+```sh
+npm run test:readme
+```
+
+This tests **committed HEAD**, excluding uncommitted files. It copies a source archive into a fresh Linux environment with Node 22, a non-root user, its own Docker daemon, and empty image/npm/database/configuration state. It runs setup, the CLI/MCP example, stop/start, and backup/restore with real assertions. It needs network downloads and a Docker host that permits privileged Docker-in-Docker containers. No host socket/home mounts or host ports are used; privileged containers are a test harness, not a security sandbox. The [Docker official image documentation](https://hub.docker.com/_/docker) describes that requirement. The runner removes its own disposable container and volumes and retains non-secret logs, source hash and receipt under `.local/readme-*/`. It leaves existing Compose services alone. This is automated clean-environment proof, not evidence of an unaided human or every supported host platform.
+
 To test the built image's CLI, MCP and server artifacts:
 
 ```sh
@@ -180,6 +229,10 @@ Stop or resume the local instance without deleting data:
 docker compose stop
 docker compose start
 ```
+
+After starting or switching databases, wait for `node -e 'fetch(`http://127.0.0.1:${process.env.SIFT_PORT || 8088}/health`).then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))'` to succeed before running API commands (or rerun `npm run local` for its readiness check). A healthy server alone is not workflow proof; use the example above.
+
+If setup fails, keep the error and rerun after correcting its cause. Do not delete `.local/` or use `docker compose down -v` as troubleshooting: credentials and database state belong together. Check Docker access with `docker info`, port conflicts with `docker compose ps`, and whether the requested modules are enabled with `modules.list`. A CLI `EACCES` on an installation made with an earlier build can mean root-owned files; inspect ownership with `ls -ld .local .local/owner.json` and correct ownership locally without loosening file modes. Do not post file contents.
 
 `.local/` contains credentials and must never be committed or shared. Keep it with the database when moving a private installation. Database recovery is documented below. Portable record interchange/import remains separate future work. Local acceptance is not workload qualification or independent security review.
 
