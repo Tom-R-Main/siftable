@@ -190,11 +190,11 @@ RUN npm run local
 #7 2.030 Executing postgresql-common-1.3-r0.trigger
 #7 2.032 * Setting postgresql17 as the default version
 #7 2.072 * find: /usr/share/man: No such file or directory
-#7 2.348 * 
+#7 2.348 *
 #7 2.348 * You are using 'postgresql17'. It's recommended to upgrade to the latest
 #7 2.348 * major version provided by package 'postgresql18'.
 #7 2.348 * Use command 'pg_versions' to switch between versions.
-#7 2.348 * 
+#7 2.348 *
 #7 2.349 OK: 16.7 MiB in 27 packages
 #7 DONE 2.9s
 
@@ -202,28 +202,28 @@ RUN npm run local
 #15 DONE 2.5s
 
 #14 [build 8/8] RUN npm ci --ignore-scripts && npm run build && npm prune --omit=dev --ignore-scripts
-#14 1.778 
+#14 1.778
 #14 1.778 added 130 packages, and audited 137 packages in 2s
-#14 1.778 
+#14 1.778
 #14 1.778 37 packages are looking for funding
 #14 1.778   run `npm fund` for details
-#14 1.779 
+#14 1.779
 #14 1.779 found 0 vulnerabilities
 #14 1.779 npm notice
 #14 1.779 npm notice New major version of npm available! 10.9.9 -> 12.2.2
 #14 1.779 npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.2
 #14 1.779 npm notice To update run: npm install -g npm@12.2.2
 #14 1.779 npm notice
-#14 1.878 
+#14 1.878
 #14 1.878 > siftable-headless@0.1.0 build
 #14 1.878 > tsc -b && node scripts/copy-modules.mjs
-#14 1.878 
-#14 2.656 
+#14 1.878
+#14 2.656
 #14 2.656 changed 2 packages, and audited 122 packages in 452ms
-#14 2.656 
+#14 2.656
 #14 2.656 36 packages are looking for funding
 #14 2.656   run `npm fund` for details
-#14 2.657 
+#14 2.657
 #14 2.657 found 0 vulnerabilities
 #14 DONE 4.0s
 
@@ -264,9 +264,9 @@ RUN npm run local
   "credentialFile": "/run/sift/owner.json"
 }
 {"status":"ready","url":"http://127.0.0.1:8088","credentialFile":".local/owner.json","modules":"projects,context,work,planning,extensions"}
- Image siftable-headless:local Building 
- Image siftable-headless:local Built 
- Image pgvector/pgvector:pg17 Pulling 
+ Image siftable-headless:local Building
+ Image siftable-headless:local Built
+ Image pgvector/pgvector:pg17 Pulling
  ef0b9aca4fbb Pulling fs layer 0B
  2d66c782e484 Pulling fs layer 0B
  605893accf60 Pulling fs layer 0B
@@ -441,31 +441,31 @@ RUN npm run local
  af1c4097986f Pull complete 0B
  03ad3f411681 Pull complete 0B
  ef0b9aca4fbb Pull complete 0B
- Image pgvector/pgvector:pg17 Pulled 
- Network siftable-headless_private Creating 
- Volume siftable-headless_database Creating 
- Volume siftable-headless_database Created 
- Network siftable-headless_private Created 
- Container siftable-headless-db-1 Creating 
- Container siftable-headless-db-1 Created 
- Container siftable-headless-db-1 Starting 
- Container siftable-headless-db-1 Started 
- Container siftable-headless-db-1 Waiting 
- Container siftable-headless-db-1 Healthy 
- Container siftable-headless-db-1 Running 
- Container siftable-headless-db-1 Waiting 
- Container siftable-headless-db-1 Healthy 
- Container siftable-headless-admin-run-308ec77bce20 Creating 
- Container siftable-headless-admin-run-308ec77bce20 Created 
- Container siftable-headless-db-1 Running 
- Network siftable-headless_local Creating 
- Network siftable-headless_local Created 
- Container siftable-headless-server-1 Creating 
- Container siftable-headless-server-1 Created 
- Container siftable-headless-db-1 Waiting 
- Container siftable-headless-db-1 Healthy 
- Container siftable-headless-server-1 Starting 
- Container siftable-headless-server-1 Started 
+ Image pgvector/pgvector:pg17 Pulled
+ Network siftable-headless_private Creating
+ Volume siftable-headless_database Creating
+ Volume siftable-headless_database Created
+ Network siftable-headless_private Created
+ Container siftable-headless-db-1 Creating
+ Container siftable-headless-db-1 Created
+ Container siftable-headless-db-1 Starting
+ Container siftable-headless-db-1 Started
+ Container siftable-headless-db-1 Waiting
+ Container siftable-headless-db-1 Healthy
+ Container siftable-headless-db-1 Running
+ Container siftable-headless-db-1 Waiting
+ Container siftable-headless-db-1 Healthy
+ Container siftable-headless-admin-run-308ec77bce20 Creating
+ Container siftable-headless-admin-run-308ec77bce20 Created
+ Container siftable-headless-db-1 Running
+ Network siftable-headless_local Creating
+ Network siftable-headless_local Created
+ Container siftable-headless-server-1 Creating
+ Container siftable-headless-server-1 Created
+ Container siftable-headless-db-1 Waiting
+ Container siftable-headless-db-1 Healthy
+ Container siftable-headless-server-1 Starting
+ Container siftable-headless-server-1 Started
 RUN node packages/cli/dist/index.js catalog --config .local/owner.json --json {}
 RUN node packages/cli/dist/index.js config.info --config .local/owner.json --json {}
 RUN node packages/cli/dist/index.js modules.list --config .local/owner.json --json {}
@@ -502,33 +502,33 @@ CLI work.accept
 }
 PASS CLI create/claim -> actual stdio MCP context/evidence/review -> owner CLI acceptance
 RUN docker compose stop
- Container siftable-headless-server-1 Stopping 
- Container siftable-headless-server-1 Stopped 
- Container siftable-headless-db-1 Stopping 
- Container siftable-headless-db-1 Stopped 
+ Container siftable-headless-server-1 Stopping
+ Container siftable-headless-server-1 Stopped
+ Container siftable-headless-db-1 Stopping
+ Container siftable-headless-db-1 Stopped
 RUN docker compose start
- Container siftable-headless-db-1 Starting 
- Container siftable-headless-db-1 Started 
- Container siftable-headless-db-1 Waiting 
- Container siftable-headless-db-1 Healthy 
- Container siftable-headless-server-1 Starting 
- Container siftable-headless-server-1 Started 
+ Container siftable-headless-db-1 Starting
+ Container siftable-headless-db-1 Started
+ Container siftable-headless-db-1 Waiting
+ Container siftable-headless-db-1 Healthy
+ Container siftable-headless-server-1 Starting
+ Container siftable-headless-server-1 Started
 RUN node packages/cli/dist/index.js work.get --config .local/owner.json --json {"id":"53587623-01eb-4d47-85fa-0156116bccb0"}
 PASS documented stop/start retains accepted work
 RUN docker compose run --rm -T admin backup --output /run/sift/backup-001
 RUN docker compose run --rm -T admin backup-verify --file /run/sift/backup-001
 RUN docker compose run --rm -T admin restore --file /run/sift/backup-001 --database siftable_recovered
 RUN docker compose stop server
- Container siftable-headless-server-1 Stopping 
- Container siftable-headless-server-1 Stopped 
+ Container siftable-headless-server-1 Stopping
+ Container siftable-headless-server-1 Stopped
 RUN docker compose up -d --force-recreate server
- Container siftable-headless-db-1 Running 
- Container siftable-headless-server-1 Recreate 
- Container siftable-headless-server-1 Recreated 
- Container siftable-headless-db-1 Waiting 
- Container siftable-headless-db-1 Healthy 
- Container siftable-headless-server-1 Starting 
- Container siftable-headless-server-1 Started 
+ Container siftable-headless-db-1 Running
+ Container siftable-headless-server-1 Recreate
+ Container siftable-headless-server-1 Recreated
+ Container siftable-headless-db-1 Waiting
+ Container siftable-headless-db-1 Healthy
+ Container siftable-headless-server-1 Starting
+ Container siftable-headless-server-1 Started
 RUN node packages/cli/dist/index.js modules.list --config .local/owner.json --json {}
 RUN node packages/cli/dist/index.js work.get --config .local/owner.json --json {"id":"53587623-01eb-4d47-85fa-0156116bccb0"}
 RUN node packages/cli/dist/index.js notes.get --config .local/owner.json --json {"id":"4dd18f09-6c2a-4615-8e2e-475a5566ea12"}
@@ -543,4 +543,3 @@ sift-readme-3ca70b75
 $ docker image rm siftable-readme-runner:3ca70b75
 Untagged: siftable-readme-runner:3ca70b75
 Deleted: sha256:26018d93d745d492294cafca8c02009646aba517f6957de8bbd8028ee86ff164
-
