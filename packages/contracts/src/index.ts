@@ -46,6 +46,8 @@ export const operations = {
     z.object({ module: moduleSchema, enabled: z.boolean() }).strict(),
   ),
   'schema.inspect': op('foundation', false, false, z.object({}).strict()),
+  // Lease holders can resolve custody without permission to read work content.
+  'work.lease': op('work', false, false, z.object({ id }).strict()),
   'projects.create': op(
     'projects',
     true,
@@ -342,7 +344,9 @@ export function allowed(principal: Principal, operation: Operation): boolean {
   return (
     (!op.operator || principal.role === 'owner') &&
     (principal.role === 'owner' ||
-      principal.permissions.includes(`${op.module}:${op.write ? 'write' : 'read'}`))
+      principal.permissions.includes(
+        `${op.module}:${op.write || operation === 'work.lease' ? 'write' : 'read'}`,
+      ))
   );
 }
 export function canonical(value: unknown): string {

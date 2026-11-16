@@ -105,6 +105,8 @@ Optional associations use foundation entity references. Work requires no project
 
 Modules own SQL schemas and migration checksums under `modules/`. Startup does not mutate the schema. Local administration applies migrations explicitly. Changes to an applied migration checksum fail closed; append a new numbered migration rather than editing receipts. The runner upgrades existing version-1 installations to version 2 transactionally, verifies each checksum, and preserves disabled module state. `install` upgrades all installed modules as well as adding the requested modules.
 
+Installation and module toggles share a state lock. Installing an enabled dependent, such as Planning, fails atomically if its prerequisite is disabled. Enable Projects first; an installation does not silently reenable it.
+
 Module enablement, tool presentation and credential permissions are separate. Direct HTTP calls receive the same authorization checks as MCP calls. Installing/disabling modules is instance administration; record access is scoped to the credential's owner and personal/named scope.
 
 ## Agents, evidence and review
@@ -123,6 +125,8 @@ docker compose run --rm admin credential \
 ```
 
 Use `.local/worker.json` on the host. `work.claim` stores the generated lease secret in the credential directory's protected `leases/` store. Later CLI/MCP mutations use that same custody automatically; secrets do not appear in tool output. The files must be protected from other OS users. These credentials distinguish API authority; they do not sandbox processes running as the same OS user.
+
+Claim secrets are stored separately per attempt. Before a new lease mutation, the client uses `work.lease` to resolve its current claim identifier and epoch, then saves a private binding for that mutation's request key. Retrying the key uses the original binding even after release or expiry. An old claim response cannot overwrite a newer claim, and recovery can safely reuse or lower epochs. `work.lease` returns no work content or secret; it requires `work:write` and returns metadata only for the caller's own active lease. An owner cannot resolve another principal's lease. Keep clients and server on the same build when upgrading; this client requires that new operation. Existing private lease files remain readable for active claims and historical retries.
 
 The normal sequence is:
 
@@ -244,7 +248,7 @@ If setup fails, keep the error and rerun after correcting its cause. Do not dele
 
 ## Backup and restore
 
-Backups use PostgreSQL 17 `pg_dump` custom archives and an exported transaction snapshot. A private manifest records module versions/checksums, enabled state, archive SHA-256, and row counts/SHA-256 for every owned table. Restore uses `pg_restore` into a **new** database, verifies all table hashes, reapplies restricted runtime grants and invalidates active leases before enabling runtime access. The tools are included in the Docker image. Native CLI users need PostgreSQL 17 client binaries on `PATH`.
+Backups use PostgreSQL 17 `pg_dump` custom archives and an exported transaction snapshot. A private manifest records module versions/checksums, enabled state, archive SHA-256, and row counts/SHA-256 for every owned table. Restore uses `pg_restore` into a **new** database, verifies all table hashes, reapplies restricted runtime grants and invalidates active leases before enabling runtime access. The tools are included in the Docker image. Native CLI users need PostgreSQL 17 client binaries on `PATH` and a PostgreSQL superuser for restore, as supplied by the local Compose admin configuration. The serving role remains restricted.
 
 ```sh
 # Run with the local database available. The destination must not already exist.
@@ -258,7 +262,9 @@ docker compose run --rm admin restore \
 
 The host backup is `.local/backup-001/`. A manifest is written only when the backup completes. The directory is mode 0700 and files are mode 0600. Only restore trusted backups you created: native PostgreSQL archives contain executable schema SQL. Hashes detect accidental corruption, not malicious replacement by someone who controls both archive and manifest. Preserve the matching application image/release with each backup; this version requires exact module schema versions and PostgreSQL major 17. [PostgreSQL dump documentation](https://www.postgresql.org/docs/17/app-pgdump.html) describes snapshots and native archive behavior.
 
-Restore preserves owner/scope/principal IDs, token **hashes**, definitions, records, receipts, evidence, artifacts and deletion state. It does not copy plaintext credentials, lease files, database-role passwords or external files. Keep credential files separately in private storage, or issue new credentials with `credential --owner-id ...` against the recovered database. Old active leases are cleared with a recorded restore event and incremented epoch; use a **new** claim request key after recovery. Old mutation keys still replay their historical receipts.
+Restore preserves owner/scope/principal IDs, token **hashes**, definitions, records, receipts, evidence, artifacts and deletion state. It does not copy plaintext credentials, lease files, database-role passwords or external files. Keep credential files separately in private storage, or issue new credentials with `credential --owner-id ...` against the recovered database. Old active leases are cleared with a recorded restore event and incremented epoch; use a **new** claim request key after recovery. Server receipts remain immutable. Client retries of lease-bearing operations also require their private custody at the same API URL. If you move to a different URL, claim afresh with new keys; local lease bindings are intentionally isolated by endpoint and are not automatically relocated. The service-switch procedure below retains the URL.
+
+Credential revocations are restored to their snapshot state too. Before serving a recovered database, reapply any revocations made after the backup, or replace and revoke the affected credentials against the recovered target. Recovery does not infer later security decisions from the original database.
 
 Restore never switches the running service automatically. To inspect the new database with the existing Compose service, stop the service and change only the database name in its protected URL file, without printing the URL:
 
@@ -269,7 +275,9 @@ docker compose up -d --force-recreate server
 npm run sift -- modules.list --config .local/owner.json
 ```
 
-To administer the recovered database later, similarly change the database component of `.local/admin-db-url`. Both old and recovered databases remain present; moving the URL back recovers the previous serving choice. A restore that fails after database creation retains that new database for inspection, with public runtime connection access disabled. No failed restore is reported as successful, and automatic cleanup never drops a database. Backups currently cover only installed Siftable module schemas, not unrelated schemas added manually to the database.
+To administer the recovered database later, similarly change the database component of `.local/admin-db-url`. Both old and recovered databases remain present; moving the URL back recovers the previous serving choice.
+
+Restore creates its target with a zero ordinary-connection limit from the outset; the trusted superuser can still inspect and restore it. Only verified completion grants runtime access and lifts that limit. On a recoverable failure, the tool restricts access again, terminates ordinary sessions on that new target, and checks the result before reporting quarantine. If a connection failure prevents reconciliation, it reports **access state unknown**. An uncertain creation response identifies the database name for inspection without modifying a potentially competing target. Keep the original serving configuration and inspect uncertain outcomes before retrying or switching databases. No failed restore is reported as successful, and automatic cleanup never drops a database. Backups currently cover only installed Siftable module schemas, not unrelated schemas added manually to the database.
 
 ## Development status
 

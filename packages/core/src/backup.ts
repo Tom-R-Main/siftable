@@ -260,6 +260,7 @@ export async function restoreDatabase(adminUrl: string, directory: string, datab
   const target = new URL(adminUrl);
   target.pathname = '/' + database;
   let created = false;
+  let creationAttempted = false;
   try {
     const major = Math.floor(
       Number((await admin.query('SHOW server_version_num')).rows[0].server_version_num) / 10000,
@@ -268,7 +269,17 @@ export async function restoreDatabase(adminUrl: string, directory: string, datab
       error('backup_version', 'Target PostgreSQL major must match the backup');
     if ((await admin.query('SELECT 1 FROM pg_database WHERE datname=$1', [database])).rowCount)
       error('restore_exists', 'Restore refuses an existing database; choose a new name');
-    await admin.query(`CREATE DATABASE ${quote(database)} TEMPLATE template0`);
+    // CONNECTION LIMIT 0 excludes ordinary sessions from the first committed
+    // creation effect. Only the trusted superuser can restore while quarantined.
+    const role = (await admin.query('SELECT rolsuper FROM pg_roles WHERE rolname=current_user'))
+      .rows[0];
+    if (!role?.rolsuper)
+      error(
+        'restore_admin',
+        'Restore requires a PostgreSQL superuser to keep the new database quarantined',
+      );
+    creationAttempted = true;
+    await admin.query(`CREATE DATABASE ${quote(database)} TEMPLATE template0 CONNECTION LIMIT 0`);
     created = true;
     await admin.query(`REVOKE CONNECT ON DATABASE ${quote(database)} FROM PUBLIC`);
     await pgTool(
@@ -337,7 +348,10 @@ export async function restoreDatabase(adminUrl: string, directory: string, datab
       target.toString(),
       manifest.modules.map((m) => m.id),
     );
-    await admin.query(`GRANT CONNECT ON DATABASE ${quote(database)} TO sift_runtime`);
+    // Publish access atomically only after integrity, lease invalidation and grants.
+    await admin.query(
+      `GRANT CONNECT ON DATABASE ${quote(database)} TO sift_runtime; ALTER DATABASE ${quote(database)} CONNECTION LIMIT -1`,
+    );
     return {
       database,
       integrity: 'verified',
@@ -348,11 +362,44 @@ export async function restoreDatabase(adminUrl: string, directory: string, datab
         'Existing protected credential files can be repointed, or issue new credentials for the restored owner/scope',
     };
   } catch (e) {
-    if (created)
+    if (created) {
+      let quarantined = false;
+      try {
+        // A publication response may be lost after commit. Reconcile instead of
+        // claiming the earlier quarantine is still in effect. No database is dropped.
+        await admin.query(
+          `ALTER DATABASE ${quote(database)} CONNECTION LIMIT 0; REVOKE CONNECT ON DATABASE ${quote(database)} FROM PUBLIC`,
+        );
+        const runtimeExists = (
+          await admin.query("SELECT 1 FROM pg_roles WHERE rolname='sift_runtime'")
+        ).rowCount;
+        if (runtimeExists)
+          await admin.query(`REVOKE CONNECT ON DATABASE ${quote(database)} FROM sift_runtime`);
+        await admin.query(
+          'SELECT pg_terminate_backend(pid,5000) FROM pg_stat_activity WHERE datname=$1 AND pid<>pg_backend_pid() AND usesysid NOT IN (SELECT oid FROM pg_roles WHERE rolsuper)',
+          [database],
+        );
+        const state = (
+          await admin.query('SELECT datconnlimit FROM pg_database WHERE datname=$1', [database])
+        ).rows[0];
+        const sessions = await admin.query(
+          'SELECT 1 FROM pg_stat_activity WHERE datname=$1 AND usesysid NOT IN (SELECT oid FROM pg_roles WHERE rolsuper)',
+          [database],
+        );
+        quarantined = state?.datconnlimit === 0 && sessions.rowCount === 0;
+      } catch {
+        /* Connection failures leave access unknown, never assumed closed. */
+      }
       throw new SiftError(
         409,
         'restore_incomplete',
-        `Recovery did not complete. Database ${database} is retained for inspection with public access disabled; no successful recovery is claimed`,
+        `Recovery did not complete. Database ${database} is retained for inspection; ${quarantined ? 'non-superuser access is disabled and existing non-superuser sessions were terminated' : 'access state is unknown; inspect and quarantine it before use'}; no successful recovery is claimed`,
+      );
+    }
+    if (creationAttempted)
+      error(
+        'restore_unknown',
+        `Database creation outcome for ${database} is unknown; inspect that name before retrying. No existing database was modified by recovery cleanup`,
       );
     throw e;
   } finally {

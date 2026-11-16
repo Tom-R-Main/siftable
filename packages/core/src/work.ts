@@ -219,6 +219,21 @@ export async function workOperation(
     !(name === 'work.get' && operations[name].input.parse(input).includeDeleted)
   )
     fail(404, 'not_found', 'Record is unavailable');
+  if (name === 'work.lease') {
+    const valid = (
+      await c.query<{ valid: boolean }>('SELECT $1::timestamptz > clock_timestamp() AS valid', [
+        w.expires_at,
+      ])
+    ).rows[0]?.valid;
+    if (
+      !valid ||
+      !['claimed', 'running'].includes(w.status) ||
+      w.claim_principal !== p.id ||
+      !w.claim_digest
+    )
+      fail(409, 'stale_lease', 'An active lease owned by this principal is required');
+    return { epoch: w.epoch, claimId: digest(`siftable-lease:${w.claim_digest}`) };
+  }
   if (name === 'work.get')
     return {
       ...(await display(c, w)),

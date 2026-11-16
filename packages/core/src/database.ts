@@ -48,6 +48,8 @@ export async function migrate(adminUrl: string, selected: string[]): Promise<Man
   try {
     await c.query('BEGIN');
     await c.query("SELECT pg_advisory_xact_lock(hashtext('siftable-migrations'))");
+    // Installation and API toggles must observe the same dependency state.
+    await c.query("SELECT pg_advisory_xact_lock(hashtextextended('siftable-module-state',0))");
     await c.query(
       "DO $$ BEGIN IF NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='sift_runtime') THEN CREATE ROLE sift_runtime LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS; END IF; END $$",
     );
@@ -143,6 +145,15 @@ export async function migrate(adminUrl: string, selected: string[]): Promise<Man
       await c.query(
         `GRANT USAGE ON SCHEMA "${m.id}" TO sift_runtime; GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA "${m.id}" TO sift_runtime; GRANT USAGE,SELECT ON ALL SEQUENCES IN SCHEMA "${m.id}" TO sift_runtime;`,
       );
+    }
+    const active = new Set(
+      (await c.query<{ id: string }>('SELECT id FROM foundation.modules WHERE enabled')).rows.map(
+        (m) => m.id,
+      ),
+    );
+    for (const m of plan) {
+      if (active.has(m.id) && m.requires.some((dependency) => !active.has(dependency)))
+        throw new Error(`Enable required modules before installing ${m.id}`);
     }
     await c.query('REVOKE INSERT,UPDATE,DELETE ON foundation.migrations FROM sift_runtime');
     await c.query(

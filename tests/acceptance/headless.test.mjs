@@ -35,7 +35,7 @@ async function cli(args, admin) {
 async function start(f) {
   const child = spawn(process.execPath, [resolve(artifacts, 'apps/server/dist/index.js')], {
     cwd: root,
-    env: { PATH: process.env.PATH, SIFT_DATABASE_URL: f.runtimeUrl, PORT: '0' },
+    env: { PATH: process.env.PATH, SIFT_DATABASE_URL: f.runtimeUrl, PORT: String(f.port ?? 0) },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let output = '';
@@ -283,6 +283,445 @@ test('standalone headless acceptance on real PostgreSQL and subprocess clients',
         } finally {
           await pool.end();
           await stop(legacy);
+        }
+      },
+    );
+    await t.test('install refuses disabled prerequisites atomically', async () => {
+      const isolated = await fixture('dependency_guard', ['projects']);
+      const project = await callCli(isolated, 'projects.create', { title: 'Dependency probe' });
+      await callCli(isolated, 'modules.set', { module: 'projects', enabled: false });
+      const db = new Pool({ connectionString: isolated.adminUrl });
+      try {
+        await assert.rejects(() => cli(['install', '--modules', 'planning'], isolated.adminUrl));
+        assert.equal(
+          (await db.query("SELECT to_regnamespace('planning') AS name")).rows[0].name,
+          null,
+        );
+        assert.equal(
+          (await db.query("SELECT enabled FROM foundation.modules WHERE id='projects'")).rows[0]
+            .enabled,
+          false,
+        );
+        await callCli(isolated, 'modules.set', { module: 'projects', enabled: true });
+        await cli(['install', '--modules', 'planning'], isolated.adminUrl);
+        const task = await callCli(isolated, 'tasks.create', {
+          title: 'Valid dependent',
+          projectId: project.id,
+        });
+        assert.equal(
+          (await callCli(isolated, 'tasks.get', { id: task.id })).project_id,
+          project.id,
+        );
+      } finally {
+        await db.end();
+        await stop(isolated);
+      }
+    });
+    await t.test('historical claim retry preserves newer CLI lease custody', async () => {
+      const isolated = await fixture('custody_guard', ['work']);
+      const worker = await agent(isolated, 'worker', ['work:read', 'work:write']);
+      try {
+        const item = await createWork(isolated.owner);
+        const old = await callCli(isolated, 'work.claim', { id: item.id }, 'claim-a', worker.path);
+        await callCli(isolated, 'work.release', { id: item.id }, 'release-a', worker.path);
+        const current = await callCli(
+          isolated,
+          'work.claim',
+          { id: item.id },
+          'claim-b',
+          worker.path,
+        );
+        assert.ok(current.epoch > old.epoch);
+        const replay = await callCli(
+          isolated,
+          'work.claim',
+          { id: item.id },
+          'claim-a',
+          worker.path,
+        );
+        assert.deepEqual(replay, old);
+        assert.equal(
+          (await callCli(isolated, 'work.start', { id: item.id }, 'start-b', worker.path)).epoch,
+          current.epoch,
+        );
+      } finally {
+        await stop(isolated);
+      }
+    });
+    await t.test('module installation serializes against dependency disable', async () => {
+      const isolated = await fixture('module_race', ['projects']);
+      const db = new Pool({ connectionString: isolated.adminUrl });
+      const lock = await db.connect();
+      let install, disable;
+      const settled = (promise) =>
+        promise.then(
+          () => true,
+          () => false,
+        );
+      try {
+        await lock.query('BEGIN');
+        await lock.query(
+          "SELECT pg_advisory_xact_lock(hashtextextended('siftable-module-state',0))",
+        );
+        install = settled(cli(['install', '--modules', 'planning'], isolated.adminUrl));
+        const waiters = async (count) => {
+          for (let i = 0; i < 200; i++) {
+            const n = (
+              await db.query(
+                "SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname=current_database() AND wait_event='advisory' AND query LIKE '%siftable-module-state%' ",
+              )
+            ).rows[0].n;
+            if (n >= count) return;
+            await new Promise((r) => setTimeout(r, 25));
+          }
+          assert.fail('Module operations did not wait on the common state lock');
+        };
+        await waiters(1);
+        disable = settled(callCli(isolated, 'modules.set', { module: 'projects', enabled: false }));
+        await waiters(2);
+        await lock.query('COMMIT');
+        const results = await Promise.all([install, disable]);
+        assert.equal(results.filter(Boolean).length, 1);
+        const states = Object.fromEntries(
+          (await db.query('SELECT id,enabled FROM foundation.modules')).rows.map((m) => [
+            m.id,
+            m.enabled,
+          ]),
+        );
+        assert.ok(!states.planning || states.projects);
+      } finally {
+        await lock.query('ROLLBACK');
+        lock.release();
+        await Promise.all([install, disable]);
+        await db.end();
+        await stop(isolated);
+      }
+    });
+    await t.test('lease resolver preserves write-only scopes and mutation retries', async () => {
+      const isolated = await fixture('lease_permissions', ['work']);
+      const worker = await agent(isolated, 'writer', ['work:write']);
+      const other = await agent(isolated, 'other', ['work:write']);
+      const reader = await agent(isolated, 'reader', ['work:read']);
+      const scoped = await agent(isolated, 'scoped', ['work:write'], { scopeId: randomUUID() });
+      try {
+        const item = await createWork(isolated.owner);
+        await callCli(isolated, 'work.claim', { id: item.id }, 'scope-claim', worker.path);
+        const lease = await invoke(worker.client, 'work.lease', { id: item.id });
+        assert.deepEqual(Object.keys(lease).sort(), ['claimId', 'epoch']);
+        await reject(() => invoke(worker.client, 'work.get', { id: item.id }), 'forbidden');
+        await reject(() => invoke(reader.client, 'work.lease', { id: item.id }), 'forbidden');
+        await reject(() => invoke(other.client, 'work.lease', { id: item.id }), 'stale_lease');
+        await reject(() => invoke(isolated.owner, 'work.lease', { id: item.id }), 'stale_lease');
+        await reject(() => invoke(scoped.client, 'work.lease', { id: item.id }), 'not_found');
+        const started = await callCli(
+          isolated,
+          'work.start',
+          { id: item.id },
+          'replay-start',
+          worker.path,
+        );
+        const released = await callCli(
+          isolated,
+          'work.release',
+          { id: item.id },
+          'replay-release',
+          worker.path,
+        );
+        assert.deepEqual(
+          await callCli(isolated, 'work.release', { id: item.id }, 'replay-release', worker.path),
+          released,
+        );
+        await callCli(isolated, 'work.claim', { id: item.id }, 'scope-next', worker.path);
+        assert.deepEqual(
+          await callCli(isolated, 'work.start', { id: item.id }, 'replay-start', worker.path),
+          started,
+        );
+        assert.deepEqual(
+          await callCli(isolated, 'work.release', { id: item.id }, 'replay-release', worker.path),
+          released,
+        );
+        assert.equal(
+          (await callCli(isolated, 'work.start', { id: item.id }, 'new-start', worker.path)).epoch,
+          2,
+        );
+      } finally {
+        await stop(isolated);
+      }
+    });
+    await t.test(
+      'pre-upgrade lease files can replay released mutations and adopt a fresh claim',
+      async () => {
+        const isolated = await fixture('legacy_custody', ['work']);
+        const worker = await agent(isolated, 'worker', ['work:write']);
+        const item = await createWork(isolated.owner);
+        const secret = randomBytes(32).toString('base64url');
+        try {
+          const claim = await worker.client.call(
+            'work.claim',
+            { id: item.id, claimSecret: secret },
+            'legacy-claim',
+          );
+          const identity = await readCredentials(worker.path);
+          const dir = resolve(isolated.dir, 'leases');
+          await mkdir(dir, { recursive: true, mode: 0o700 });
+          const hash = (value) => createHash('sha256').update(value).digest('hex');
+          await writeFile(
+            resolve(dir, hash(`${isolated.url}:${identity.principalId}:${item.id}`) + '.json'),
+            JSON.stringify({ claimSecret: secret, epoch: claim.epoch }),
+            { mode: 0o600 },
+          );
+          await writeFile(
+            resolve(dir, hash(`${identity.principalId}:${item.id}:legacy-claim`) + '.claim.json'),
+            JSON.stringify({ claimSecret: secret }),
+            { mode: 0o600 },
+          );
+          const released = await worker.client.call(
+            'work.release',
+            { id: item.id, claimSecret: secret, epoch: claim.epoch },
+            'legacy-release',
+          );
+          assert.deepEqual(
+            await callCli(isolated, 'work.release', { id: item.id }, 'legacy-release', worker.path),
+            released,
+          );
+          assert.deepEqual(
+            await callCli(isolated, 'work.claim', { id: item.id }, 'legacy-claim', worker.path),
+            claim,
+          );
+          const fresh = await callCli(
+            isolated,
+            'work.claim',
+            { id: item.id },
+            'new-claim',
+            worker.path,
+          );
+          assert.equal(
+            (await callCli(isolated, 'work.start', { id: item.id }, 'new-start', worker.path))
+              .epoch,
+            fresh.epoch,
+          );
+        } finally {
+          await stop(isolated);
+        }
+      },
+    );
+    await t.test('delayed claim response cannot replace newer custody', async () => {
+      const isolated = await fixture('delayed_claim', ['work']);
+      const worker = await agent(isolated, 'worker', ['work:write']);
+      const item = await createWork(isolated.owner);
+      const fetch = globalThis.fetch;
+      let received, deliver;
+      const committed = new Promise((r) => {
+        received = r;
+      });
+      const gate = new Promise((r) => {
+        deliver = r;
+      });
+      let old;
+      try {
+        globalThis.fetch = async (...args) => {
+          const response = await fetch(...args);
+          if (args[1]?.headers?.['Idempotency-Key'] === 'delayed-first') {
+            received();
+            await gate;
+          }
+          return response;
+        };
+        old = invoke(worker.client, 'work.claim', { id: item.id }, 'delayed-first');
+        let timeout;
+        try {
+          await Promise.race([
+            committed,
+            new Promise((_, reject) => {
+              timeout = setTimeout(
+                () => reject(new Error('Claim did not reach the response barrier')),
+                10000,
+              );
+            }),
+          ]);
+        } finally {
+          clearTimeout(timeout);
+        }
+        // Separate CLI processes can use persisted custody before the first response arrives.
+        await callCli(isolated, 'work.release', { id: item.id }, 'delay-release', worker.path);
+        const current = await callCli(
+          isolated,
+          'work.claim',
+          { id: item.id },
+          'delay-next',
+          worker.path,
+        );
+        deliver();
+        await old;
+        assert.equal(
+          (await callCli(isolated, 'work.start', { id: item.id }, 'delay-start', worker.path))
+            .epoch,
+          current.epoch,
+        );
+      } finally {
+        deliver();
+        await old?.catch(() => {});
+        globalThis.fetch = fetch;
+        await stop(isolated);
+      }
+    });
+    await t.test(
+      'same-endpoint restore permits lower and reused epochs with existing custody',
+      async () => {
+        const source = await fixture('epoch_restore', ['work']);
+        const worker = await agent(source, 'worker', ['work:write']);
+        const item = await createWork(source.owner);
+        await callCli(source, 'work.claim', { id: item.id }, 'snapshot-claim', worker.path);
+        await callCli(source, 'work.release', { id: item.id }, 'snapshot-release', worker.path);
+        const backup = resolve(base, 'epoch-backup');
+        await cli(['backup', '--output', backup], source.adminUrl);
+        for (let i = 0; i < 2; i++) {
+          await callCli(source, 'work.claim', { id: item.id }, `later-claim-${i}`, worker.path);
+          await callCli(source, 'work.release', { id: item.id }, `later-release-${i}`, worker.path);
+        }
+        const db = `sift_epoch_recovered_${runId}`;
+        await cli(['restore', '--file', backup, '--database', db], adminBase);
+        fixtures.push({ db });
+        source.port = new URL(source.url).port;
+        const sameUrl = source.url;
+        await stop(source);
+        const target = new URL(source.runtimeUrl);
+        target.pathname = '/' + db;
+        source.runtimeUrl = target.href;
+        await start(source);
+        assert.equal(source.url, sameUrl);
+        try {
+          const fresh = await callCli(
+            source,
+            'work.claim',
+            { id: item.id },
+            'after-restore',
+            worker.path,
+          );
+          assert.equal(fresh.epoch, 2);
+          await callCli(source, 'work.claim', { id: item.id }, 'snapshot-claim', worker.path);
+          assert.equal(
+            (await callCli(source, 'work.start', { id: item.id }, 'restored-start', worker.path))
+              .epoch,
+            2,
+          );
+        } finally {
+          await stop(source);
+        }
+      },
+    );
+    await t.test(
+      'restore reconciles lost creation and publish responses without false quarantine',
+      async (t) => {
+        const source = await fixture('restore_fault', ['context']);
+        const backup = resolve(base, 'fault-backup');
+        await cli(['backup', '--output', backup], source.adminUrl);
+        await stop(source);
+        const admin = new Pool({ connectionString: adminBase });
+        try {
+          await t.test('non-superuser prerequisite refuses before creating a target', async () => {
+            const role = `restore_admin_${runId}`;
+            const db = `sift_unprivileged_${runId}`;
+            await admin.query(`CREATE ROLE "${role}" LOGIN CREATEDB CREATEROLE NOSUPERUSER`);
+            try {
+              const url = new URL(adminBase);
+              url.username = role;
+              url.password = '';
+              await assert.rejects(
+                () => cli(['restore', '--file', backup, '--database', db], url.href),
+                (e) => /requires a PostgreSQL superuser/.test(e.stderr),
+              );
+              assert.equal(
+                (await admin.query('SELECT 1 FROM pg_database WHERE datname=$1', [db])).rowCount,
+                0,
+              );
+            } finally {
+              await admin.query(`DROP ROLE "${role}"`);
+            }
+          });
+          for (const stage of ['created', 'published', 'unknown'])
+            await t.test(stage, async () => {
+              const db = `sift_fault_${stage}_${runId}`;
+              fixtures.push({ db });
+              await assert.rejects(
+                () =>
+                  exec(
+                    process.execPath,
+                    [
+                      '--import',
+                      resolve(root, 'tests/acceptance/restore-fault.mjs'),
+                      resolve(artifacts, 'packages/cli/dist/index.js'),
+                      'restore',
+                      '--file',
+                      backup,
+                      '--database',
+                      db,
+                    ],
+                    {
+                      env: {
+                        PATH: process.env.PATH,
+                        SIFT_ADMIN_DATABASE_URL: adminBase,
+                        SIFT_ARTIFACT_ROOT: artifacts,
+                        TEST_RESTORE_FAULT: stage,
+                        TEST_RESTORE_SESSION_FILE: resolve(base, 'restore-session.json'),
+                      },
+                    },
+                  ),
+                (error) =>
+                  stage === 'unknown'
+                    ? /access state is unknown/.test(error.stderr)
+                    : stage === 'created'
+                      ? /creation outcome.*unknown/.test(error.stderr)
+                      : /non-superuser access is disabled/.test(error.stderr),
+              );
+              const state = (
+                await admin.query(
+                  "SELECT datconnlimit,has_database_privilege('sift_runtime',datname,'CONNECT') AS allowed FROM pg_database WHERE datname=$1",
+                  [db],
+                )
+              ).rows[0];
+              assert.ok(state);
+              if (stage === 'created')
+                assert.equal(
+                  state.datconnlimit,
+                  0,
+                  'Creation itself must quarantine non-superuser connections',
+                );
+              else if (stage === 'unknown') assert.equal(state.allowed, true);
+              else
+                assert.equal(
+                  state.allowed,
+                  false,
+                  'Lost publication response must be reconciled before claiming quarantine',
+                );
+              if (stage === 'published') {
+                const { pid } = JSON.parse(
+                  await readFile(resolve(base, 'restore-session.json'), 'utf8'),
+                );
+                assert.equal(
+                  (await admin.query('SELECT 1 FROM pg_stat_activity WHERE pid=$1', [pid]))
+                    .rowCount,
+                  0,
+                );
+              }
+              if (stage !== 'unknown') {
+                const target = new URL(adminBase);
+                target.pathname = '/' + db;
+                target.username = 'sift_runtime';
+                target.password = '';
+                const runtime = new Pool({ connectionString: target.href });
+                try {
+                  await assert.rejects(
+                    () => runtime.query('SELECT 1'),
+                    (e) => ['42501', '53300'].includes(e.code),
+                  );
+                } finally {
+                  await runtime.end();
+                }
+              }
+            });
+        } finally {
+          await admin.end();
         }
       },
     );
