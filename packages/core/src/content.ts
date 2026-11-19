@@ -1,6 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import type { PoolClient } from 'pg';
-import { operations, canonical, type Operation, type Principal } from '@siftable/contracts';
+import {
+  operations,
+  canonical,
+  normalizeRootPath,
+  normalizeGitRemoteUrl,
+  type Operation,
+  type Principal,
+} from '@siftable/contracts';
 import { setDeleted } from './lifecycle.js';
 import { digest } from './database.js';
 import { entity, reference, link, first, fail } from './helpers.js';
@@ -102,6 +109,111 @@ export async function contentOperation(
         [a.limit, a.offset, a.includeDeleted],
       )
     ).rows;
+  }
+  if (name === 'projects.bind') {
+    const a = operations[name].input.parse(input);
+    await reference(c, a.projectId, 'projects.project');
+    const rootPath = normalizeRootPath(a.rootPath);
+    const gitRemoteUrl = a.gitRemoteUrl ? normalizeGitRemoteUrl(a.gitRemoteUrl) : null;
+    const defaultBranch = a.defaultBranch ?? null;
+    const row = first(
+      (
+        await c.query<{
+          id: string;
+          project_id: string;
+          root_path: string;
+          git_remote_url: string | null;
+          default_branch: string | null;
+        }>(
+          `INSERT INTO projects.bindings(id,owner_id,scope_id,project_id,root_path,git_remote_url,default_branch)
+           VALUES($1,$2,$3,$4,$5,$6,$7)
+           ON CONFLICT (owner_id,(COALESCE(scope_id,'00000000-0000-0000-0000-000000000000'::uuid)),root_path)
+           DO UPDATE SET project_id=EXCLUDED.project_id,git_remote_url=EXCLUDED.git_remote_url,default_branch=EXCLUDED.default_branch,updated_at=clock_timestamp()
+           RETURNING id,project_id,root_path,git_remote_url,default_branch`,
+          [randomUUID(), p.ownerId, p.scopeId, a.projectId, rootPath, gitRemoteUrl, defaultBranch],
+        )
+      ).rows,
+    );
+    return {
+      id: row.id,
+      projectId: row.project_id,
+      rootPath: row.root_path,
+      gitRemoteUrl: row.git_remote_url,
+      defaultBranch: row.default_branch,
+    };
+  }
+  if (name === 'projects.resolve') {
+    const a = operations[name].input.parse(input);
+    const checkoutPath = a.checkoutPath ? normalizeRootPath(a.checkoutPath) : null;
+    const gitRemoteUrl = a.gitRemoteUrl ? normalizeGitRemoteUrl(a.gitRemoteUrl) : null;
+    if (!checkoutPath && !gitRemoteUrl) {
+      return { matched: false, matchKind: null, project: null, binding: null };
+    }
+    const rows = (
+      await c.query<{
+        binding_id: string;
+        project_id: string;
+        root_path: string;
+        git_remote_url: string | null;
+        default_branch: string | null;
+        id: string;
+        title: string;
+        instructions: string;
+        revision: number;
+        deleted_at: string | null;
+      }>(
+        `SELECT b.id AS binding_id,b.project_id,b.root_path,b.git_remote_url,b.default_branch,
+                p.id,p.title,p.instructions,p.revision,e.deleted_at
+         FROM projects.bindings b
+         JOIN projects.projects p ON p.id=b.project_id
+         JOIN foundation.entities e ON e.id=p.id
+         WHERE e.deleted_at IS NULL
+         ORDER BY length(b.root_path) DESC,b.updated_at DESC,b.id ASC`,
+      )
+    ).rows;
+    let matchedRow: (typeof rows)[number] | undefined;
+    let matchKind: 'root_path' | 'git_remote' | null = null;
+    if (checkoutPath) {
+      let bestLength = -1;
+      for (const row of rows) {
+        const root = normalizeRootPath(row.root_path);
+        const matches =
+          checkoutPath === root ||
+          (root === '/' ? checkoutPath.startsWith('/') : checkoutPath.startsWith(`${root}/`));
+        if (matches && root.length > bestLength) {
+          bestLength = root.length;
+          matchedRow = row;
+        }
+      }
+      if (matchedRow) matchKind = 'root_path';
+    }
+    if (!matchedRow && gitRemoteUrl) {
+      matchedRow = rows.find(
+        (row) => row.git_remote_url && normalizeGitRemoteUrl(row.git_remote_url) === gitRemoteUrl,
+      );
+      if (matchedRow) matchKind = 'git_remote';
+    }
+    if (!matchedRow || !matchKind) {
+      return { matched: false, matchKind: null, project: null, binding: null };
+    }
+    return {
+      matched: true,
+      matchKind,
+      project: {
+        id: matchedRow.id,
+        title: matchedRow.title,
+        instructions: matchedRow.instructions,
+        revision: matchedRow.revision,
+        deleted_at: matchedRow.deleted_at,
+      },
+      binding: {
+        id: matchedRow.binding_id,
+        projectId: matchedRow.project_id,
+        rootPath: matchedRow.root_path,
+        gitRemoteUrl: matchedRow.git_remote_url,
+        defaultBranch: matchedRow.default_branch,
+      },
+    };
   }
   if (name === 'tasks.create') {
     const a = operations[name].input.parse(input);

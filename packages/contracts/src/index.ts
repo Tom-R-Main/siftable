@@ -61,6 +61,30 @@ export const operations = {
     false,
     z.object({ ...page, includeDeleted: z.boolean().default(false) }).strict(),
   ),
+  'projects.bind': op(
+    'projects',
+    true,
+    false,
+    z
+      .object({
+        projectId: id,
+        rootPath: z.string().trim().min(1).max(4096),
+        gitRemoteUrl: z.string().trim().min(1).max(2048).optional(),
+        defaultBranch: z.string().trim().min(1).max(255).optional(),
+      })
+      .strict(),
+  ),
+  'projects.resolve': op(
+    'projects',
+    false,
+    false,
+    z
+      .object({
+        checkoutPath: z.string().trim().min(1).max(4096).optional(),
+        gitRemoteUrl: z.string().trim().min(1).max(2048).optional(),
+      })
+      .strict(),
+  ),
   'notes.create': op(
     'context',
     true,
@@ -395,4 +419,75 @@ export function canonical(value: unknown): string {
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([k, v]) => `${JSON.stringify(k)}:${canonical(v)}`)
     .join(',')}}`;
+}
+
+const DEFAULT_GIT_REMOTE_PORTS: Record<string, string> = {
+  'http:': '80',
+  'https:': '443',
+  'ssh:': '22',
+  'git:': '9418',
+};
+
+export function normalizeRootPath(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return '';
+  if (/^\/+$/.test(trimmed)) return '/';
+  return trimmed.replace(/\/+$/, '');
+}
+
+export function normalizeGitRemoteUrl(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return '';
+
+  if (!trimmed.includes('://')) {
+    const scp = /^(?:([^@/\s]+)@)?([^:/\s][^:/\s]*):(.+)$/.exec(trimmed);
+    const host = scp?.[2];
+    const pathPart = scp?.[3];
+    if (scp && host && pathPart) {
+      const hasUser = Boolean(scp[1]);
+      const isWindowsDrive = !hasUser && /^[a-zA-Z]$/.test(host) && pathPart.startsWith('\\');
+      const isHostWithPort = !hasUser && /^\d+(?:\/|$)/.test(pathPart);
+      if (!isWindowsDrive && !isHostWithPort) {
+        const cleanPath = pathPart
+          .replace(/^\/+/, '')
+          .replace(/\/+$/, '')
+          .replace(/\.git$/i, '')
+          .replace(/\/+$/, '')
+          .toLowerCase();
+        return cleanPath ? `${host.toLowerCase()}/${cleanPath}` : host.toLowerCase();
+      }
+    }
+  }
+
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(trimmed)) {
+    try {
+      const parsed = new URL(trimmed);
+      if (parsed.protocol === 'file:') {
+        const filePath = decodeURIComponent(parsed.pathname)
+          .replace(/\/+$/, '')
+          .replace(/\.git$/i, '')
+          .replace(/\/+$/, '')
+          .toLowerCase();
+        return `file://${filePath || '/'}`;
+      }
+      const host = parsed.hostname.toLowerCase();
+      const defaultPort = DEFAULT_GIT_REMOTE_PORTS[parsed.protocol];
+      const port = parsed.port && parsed.port !== defaultPort ? `:${parsed.port}` : '';
+      const cleanPath = decodeURIComponent(parsed.pathname)
+        .replace(/^\/+/, '')
+        .replace(/\/+$/, '')
+        .replace(/\.git$/i, '')
+        .replace(/\/+$/, '')
+        .toLowerCase();
+      return cleanPath ? `${host}${port}/${cleanPath}` : `${host}${port}`;
+    } catch {
+      // Fall through to string normalization when URL parsing fails.
+    }
+  }
+
+  return trimmed
+    .replace(/\/+$/, '')
+    .replace(/\.git$/i, '')
+    .replace(/\/+$/, '')
+    .toLowerCase();
 }

@@ -3,6 +3,17 @@ import { readFile, writeFile, mkdir, lstat, link, unlink } from 'node:fs/promise
 import { dirname, join, resolve } from 'node:path';
 import { z } from 'zod';
 import { operations, SiftError, type Operation, type OperationInput } from '@siftable/contracts';
+export {
+  inspectGitCheckout,
+  matchBindingForCheckout,
+  normalizeGitRemoteUrl,
+  normalizeRootPath,
+  type BindingMatchResult,
+  type CheckoutMatchInput,
+  type GitCheckoutInfo,
+  type GitCheckoutKind,
+  type ProjectBindingCandidate,
+} from './gitCheckout.js';
 const configSchema = z
   .object({
     apiUrl: z.url(),
