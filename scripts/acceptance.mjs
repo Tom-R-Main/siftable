@@ -54,6 +54,7 @@ try {
     await new Promise((r) => setTimeout(r, 500));
   }
   if (!ready) throw new Error('Database readiness timed out');
+  await mkdir('.local/validation', { recursive: true });
   const args = [
     'run',
     '--rm',
@@ -76,7 +77,6 @@ try {
     'tests/acceptance/headless.test.mjs',
   ];
   const report = await run(args);
-  await mkdir('.local/validation', { recursive: true });
   await writeFile('.local/validation/headless.tap', report);
 } finally {
   // Names are generated for this attempt; no unrelated container or network is touched.
