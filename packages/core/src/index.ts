@@ -10,6 +10,7 @@ import {
 import { authenticate, digest, transaction, manifests } from './database.js';
 import { enabled, fail } from './helpers.js';
 import { findInlineAgentWorkSecret } from './secretPolicy.js';
+import { sanitizeReadPayload } from './readSanitizer.js';
 import { workOperation } from './work.js';
 import { contentOperation } from './content.js';
 import { extensionOperation } from './extensions.js';
@@ -45,8 +46,22 @@ export {
   type WorkGraphNodeInput,
   type WorkGraphResult,
   type WorkGraphRootSummary,
+  type WorkPriority,
   type WorkUiState,
 } from './workGraph.js';
+export {
+  sanitizeReadPayload,
+  sanitizeReadText,
+  type SanitizedReadTextResult,
+} from './readSanitizer.js';
+export {
+  computeWorkUpdateDiff,
+  type WorkUpdateDiff,
+  type WorkUpdateDiffInput,
+  type WorkUpdateField,
+  type WorkUpdatePatch,
+  type WorkUpdateStep,
+} from './work.js';
 export async function catalog(pool: Pool, token: string, profile?: string[]) {
   const principal = await authenticate(pool, token);
   const installed = await pool.query<{ id: string }>(
@@ -207,6 +222,6 @@ export async function execute(
         [p.ownerId, p.scopeId, p.id, operation],
       );
     }
-    return result;
+    return !contract.write && p.role === 'agent' ? sanitizeReadPayload(result) : result;
   });
 }

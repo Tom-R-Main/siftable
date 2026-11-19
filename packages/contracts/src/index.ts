@@ -214,6 +214,13 @@ export const operations = {
       .object({
         title,
         description: text.default(''),
+        rank: z.number().int().min(-1_000_000).max(1_000_000).default(0),
+        priority: z.enum(['low', 'normal', 'high', 'urgent']).default('normal'),
+        labels: z
+          .array(z.string().trim().min(1).max(64))
+          .max(30)
+          .transform((items) => [...new Set(items)])
+          .default([]),
         projectId: id.optional(),
         taskId: id.optional(),
         contextIds: z.array(id).max(100).default([]),
@@ -322,7 +329,33 @@ export const operations = {
     'work',
     true,
     true,
-    z.object({ id, revision, title, description: text, reason: title }).strict(),
+    z
+      .object({
+        id,
+        revision,
+        title: title.optional(),
+        description: text.optional(),
+        steps: z.array(step).min(1).max(50).optional(),
+        rank: z.number().int().min(-1_000_000).max(1_000_000).optional(),
+        priority: z.enum(['low', 'normal', 'high', 'urgent']).optional(),
+        labels: z
+          .array(z.string().trim().min(1).max(64))
+          .max(30)
+          .transform((items) => [...new Set(items)])
+          .optional(),
+        reason: title,
+      })
+      .strict()
+      .refine(
+        (v) =>
+          v.title !== undefined ||
+          v.description !== undefined ||
+          v.steps !== undefined ||
+          v.rank !== undefined ||
+          v.priority !== undefined ||
+          v.labels !== undefined,
+        { message: 'At least one mutable field must be provided' },
+      ),
   ),
   'work.delete': op('work', true, true, remove),
   'work.restore': op('work', true, true, remove),

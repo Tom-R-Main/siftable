@@ -241,11 +241,13 @@ test('standalone headless acceptance on real PostgreSQL and subprocess clients',
           );
           assert.equal(
             (await pool.query('SELECT count(*)::int AS n FROM foundation.migrations')).rows[0].n,
-            14,
+            15,
           );
           assert.ok(
             (await callCli(legacy, 'modules.list', {})).every(
-              (m) => m.version === (m.id === 'projects' || m.id === 'context' ? 3 : 2),
+              (m) =>
+                m.version ===
+                (m.id === 'projects' || m.id === 'context' || m.id === 'work' ? 3 : 2),
             ),
           );
           await cli(['install', '--modules', 'context'], legacy.adminUrl);
@@ -2674,6 +2676,195 @@ test('standalone headless acceptance on real PostgreSQL and subprocess clients',
             return true;
           },
         );
+      },
+    );
+    await t.test(
+      'metadata-only work.update preserves passing evidence, records field diffs, and agent reads sanitize bidi/secrets',
+      async () => {
+        const metaProject = await callCli(f, 'projects.create', {
+          title: 'Metadata and read redaction project',
+        });
+        let item = await createWork(f.owner, {
+          title: 'Metadata update target',
+          description: 'Initial contract description',
+          projectId: metaProject.id,
+          rank: 5,
+          priority: 'normal',
+          labels: ['  wave-4 ', 'backend', 'wave-4'],
+        });
+        assert.equal(item.rank, 5);
+        assert.equal(item.priority, 'normal');
+        assert.deepEqual(item.labels, ['wave-4', 'backend']);
+
+        // Record passing verification evidence and release back to queued.
+        await invoke(a.client, 'work.claim', { id: item.id });
+        await invoke(a.client, 'work.evidence', {
+          id: item.id,
+          planVersion: item.plan_version,
+          stepId: item.plan.steps[0].id,
+          attemptId: 'meta-pass-1',
+          outcome: 'passed',
+          output: 'All verification checks passed',
+          provenance: 'fixture://meta-evidence',
+        });
+        item = await invoke(a.client, 'work.release', { id: item.id });
+        assert.equal(item.coverage.state, 'commands_passed');
+        assert.equal(item.plan_version, 1);
+
+        // Stale revision on metadata-only update still fails closed with 409 revision_conflict.
+        await reject(
+          () =>
+            invoke(f.owner, 'work.update', {
+              id: item.id,
+              revision: item.revision - 1,
+              rank: -10,
+              reason: 'Stale metadata revision probe',
+            }),
+          'revision_conflict',
+        );
+
+        // Metadata-only update (including unchanged title) preserves plan_version and passing evidence.
+        const revBeforeMeta = item.revision;
+        item = await callCli(f, 'work.update', {
+          id: item.id,
+          revision: revBeforeMeta,
+          title: item.title,
+          rank: -10,
+          priority: 'urgent',
+          labels: ['p0', ' wave-4 ', 'p0'],
+          reason: 'Promote priority without changing contract',
+        });
+        assert.equal(item.revision, revBeforeMeta + 1);
+        assert.equal(item.plan_version, 1);
+        assert.equal(item.coverage.state, 'commands_passed');
+        assert.equal(item.rank, -10);
+        assert.equal(item.priority, 'urgent');
+        assert.deepEqual(item.labels, ['p0', 'wave-4']);
+
+        const afterMetaDetail = await invoke(f.owner, 'work.get', { id: item.id });
+        assert.equal(afterMetaDetail.plans.length, 1);
+        const metaEvent = afterMetaDetail.history.findLast((e) => e.event === 'work.update');
+        assert.deepEqual(metaEvent.detail.changedFields, ['rank', 'priority', 'labels']);
+        assert.deepEqual(metaEvent.detail.before, {
+          rank: 5,
+          priority: 'normal',
+          labels: ['wave-4', 'backend'],
+        });
+        assert.deepEqual(metaEvent.detail.after, {
+          rank: -10,
+          priority: 'urgent',
+          labels: ['p0', 'wave-4'],
+        });
+        assert.equal(metaEvent.detail.invalidatedEvidence, false);
+
+        // work.list and work.graph both surface updated rank, priority, and labels.
+        const listed = await invoke(f.owner, 'work.list', { limit: 100, offset: 0 });
+        const listedItem = listed.find((entry) => entry.id === item.id);
+        assert.equal(listedItem.rank, -10);
+        assert.equal(listedItem.priority, 'urgent');
+        assert.deepEqual(listedItem.labels, ['p0', 'wave-4']);
+        const graph = await invoke(f.owner, 'work.graph', { projectId: metaProject.id });
+        const graphNode = graph.nodes.find((n) => n.id === item.id);
+        assert.equal(graphNode.rank, -10);
+        assert.equal(graphNode.priority, 'urgent');
+        assert.deepEqual(graphNode.labels, ['p0', 'wave-4']);
+
+        // Metadata-only update while leased is still rejected.
+        const claimed = await invoke(a.client, 'work.claim', { id: item.id });
+        await reject(
+          () =>
+            invoke(f.owner, 'work.update', {
+              id: item.id,
+              revision: claimed.revision,
+              rank: 20,
+              reason: 'Cannot edit while leased',
+            }),
+          'invalid_transition',
+        );
+        item = await invoke(a.client, 'work.release', { id: item.id });
+        assert.equal(item.coverage.state, 'commands_passed');
+
+        // Contract/intent update (title + steps) still bumps plan_version and invalidates evidence.
+        item = await callCli(f, 'work.update', {
+          id: item.id,
+          revision: item.revision,
+          title: 'Revised contract title',
+          steps: [
+            { key: 'check', title: 'Observable result', required: true },
+            { key: 'extra', title: 'Second required gate', required: true },
+          ],
+          reason: 'Expand verification contract',
+        });
+        assert.equal(item.plan_version, 2);
+        assert.equal(item.coverage.state, 'unverified');
+        const afterIntentDetail = await invoke(f.owner, 'work.get', { id: item.id });
+        assert.equal(afterIntentDetail.plans.length, 2);
+        const intentEvent = afterIntentDetail.history.findLast((e) => e.event === 'work.update');
+        assert.deepEqual(intentEvent.detail.changedFields, ['title', 'steps']);
+        assert.equal(intentEvent.detail.before.title, 'Metadata update target');
+        assert.equal(intentEvent.detail.after.title, 'Revised contract title');
+        assert.equal(intentEvent.detail.before.steps.length, 1);
+        assert.equal(intentEvent.detail.after.steps.length, 2);
+        assert.equal(intentEvent.detail.invalidatedEvidence, true);
+
+        // Agent reads strip invisible/bidi characters and redact pre-existing secrets while preserving UUIDs/timestamps/digests.
+        const dirtyItem = await createWork(f.owner, {
+          title: 'Audit\u202E bidi\u200B title\uFEFF',
+          description: 'Clean before legacy injection',
+          projectId: metaProject.id,
+          rank: -1,
+          priority: 'high',
+          labels: ['sec\u200Burity'],
+        });
+        await invoke(a.client, 'work.claim', { id: dirtyItem.id });
+        const artifactAdded = await invoke(a.client, 'work.artifacts.add', {
+          id: dirtyItem.id,
+          name: 'notes.md',
+          mediaType: 'text/markdown',
+          content: 'Check\u202E artifact\u200B text',
+        });
+        await invoke(a.client, 'work.release', { id: dirtyItem.id });
+
+        // Simulate a legacy/pre-policy database row containing leaked credentials.
+        const adminPool = new Pool({ connectionString: f.adminUrl });
+        try {
+          await adminPool.query('UPDATE work.items SET description=$2 WHERE id=$1', [
+            dirtyItem.id,
+            'Leaked sk-proj-abcdefghijklmnop123456 and ghp_1234567890abcdefghij123456 and Authorization: Bearer supersecret999 and token=raw_secret_val',
+          ]);
+        } finally {
+          await adminPool.end();
+        }
+
+        const agentGet = await invoke(a.client, 'work.get', { id: dirtyItem.id });
+        assert.equal(agentGet.id, dirtyItem.id);
+        assert.equal(agentGet.title, 'Audit bidi title');
+        assert.deepEqual(agentGet.labels, ['security']);
+        assert.ok(agentGet.description.includes('[REDACTED]'));
+        assert.ok(!agentGet.description.includes('sk-proj-'));
+        assert.ok(!agentGet.description.includes('ghp_'));
+        assert.ok(!agentGet.description.includes('supersecret999'));
+        assert.ok(!agentGet.description.includes('raw_secret_val'));
+        assert.equal(agentGet.artifacts.length, 1);
+        assert.match(agentGet.artifacts[0].digest, /^[0-9a-f]{64}$/);
+
+        const agentArtifact = await invoke(a.client, 'work.artifacts.get', {
+          id: dirtyItem.id,
+          artifactId: artifactAdded.artifactId,
+        });
+        assert.equal(agentArtifact.content, 'Check artifact text');
+        assert.equal(agentArtifact.digest, agentGet.artifacts[0].digest);
+
+        const agentGraph = await invoke(a.client, 'work.graph', { projectId: metaProject.id });
+        const agentNode = agentGraph.nodes.find((n) => n.id === dirtyItem.id);
+        assert.equal(agentNode.title, 'Audit bidi title');
+        assert.ok(!agentNode.description.includes('sk-proj-'));
+        assert.ok(agentNode.description.includes('[REDACTED]'));
+
+        // Owner reads retain raw stored content for operator inspection/remediation.
+        const ownerGet = await invoke(f.owner, 'work.get', { id: dirtyItem.id });
+        assert.ok(ownerGet.title.includes('\u202E'));
+        assert.ok(ownerGet.description.includes('sk-proj-'));
       },
     );
     await t.test('restart preserves accepted work and idempotency receipts', async () => {
