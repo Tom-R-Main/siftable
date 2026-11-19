@@ -1,4 +1,10 @@
 import type { VerificationCoverage } from './verificationTypes.js';
+import {
+  deriveWorkClaimability,
+  toPublicClaimability,
+  type WorkClaimability,
+  type WorkDependencyStateInput,
+} from './claimability.js';
 
 export type WorkUiState =
   'ready' | 'waiting' | 'active' | 'needs_you' | 'done' | 'failed' | 'cancelled';
@@ -17,6 +23,8 @@ export interface WorkGraphNodeInput {
   plan_version: number;
   summary: string | null;
   claimable: boolean;
+  claimability?: WorkClaimability;
+  expires_at?: Date | string | null;
   deleted_at: Date | string | null;
   created_at: Date | string;
   coverage: VerificationCoverage;
@@ -42,6 +50,7 @@ export interface WorkGraphNode {
   planVersion: number;
   summary: string | null;
   claimable: boolean;
+  claimability: WorkClaimability;
   deleted: boolean;
   createdAt: string;
   coverage: VerificationCoverage;
@@ -222,6 +231,35 @@ export function buildWorkGraph(
     rootIds.sort();
 
     const satisfied = preds.filter((e) => e.satisfied).length;
+    const claimability: WorkClaimability =
+      raw.claimability ??
+      toPublicClaimability(
+        deriveWorkClaimability(
+          preds.map((edge): WorkDependencyStateInput => {
+            const predNode = nodeMap.get(edge.predecessor_id);
+            return {
+              workId: edge.predecessor_id,
+              ...(predNode ? { title: predNode.title } : {}),
+              status: predNode?.status ?? 'unknown',
+              gate: edge.gate,
+              satisfied: edge.satisfied,
+              deleted: predNode ? predNode.deleted_at !== null : false,
+              coverageState: predNode?.coverage.state,
+            };
+          }),
+          {
+            status: raw.status,
+            deleted: raw.deleted_at !== null,
+            expiresAt:
+              raw.expires_at !== undefined
+                ? raw.expires_at
+                : (raw.status === 'claimed' || raw.status === 'running') && raw.claimable
+                  ? new Date(0)
+                  : null,
+            summary: raw.summary,
+          },
+        ),
+      );
 
     fullNodes.set(raw.id, {
       id: raw.id,
@@ -234,6 +272,7 @@ export function buildWorkGraph(
       planVersion: raw.plan_version,
       summary: raw.summary,
       claimable: raw.claimable,
+      claimability,
       deleted: raw.deleted_at !== null,
       createdAt: toIso(raw.created_at),
       coverage: raw.coverage,

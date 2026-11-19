@@ -7,6 +7,17 @@ import { agentWorkClaimTokenDigest } from './claimDigest.js';
 import { deriveVerificationCoverage } from './verificationCoverage.js';
 import type { VerificationStep } from './verificationTypes.js';
 import { buildWorkGraph } from './workGraph.js';
+import {
+  dependencyCycleError,
+  deriveWorkClaimability,
+  invalidTransitionError,
+  notClaimableError,
+  revisionConflictError,
+  staleLeaseError,
+  toPublicClaimability,
+  type DerivedWorkClaimability,
+  type WorkDependencyStateInput,
+} from './claimability.js';
 import { entity, reference, link, first, fail } from './helpers.js';
 interface WorkRow {
   id: string;
@@ -103,41 +114,48 @@ async function coverage(c: PoolClient, w: WorkRow) {
     ),
   };
 }
-async function dependenciesReady(c: PoolClient, id: string): Promise<boolean> {
-  const deps = await c.query<{ predecessor_id: string; gate: string }>(
-    'SELECT predecessor_id,gate FROM work.dependencies WHERE work_id=$1',
-    [id],
+async function evaluateClaimability(c: PoolClient, w: WorkRow): Promise<DerivedWorkClaimability> {
+  const nowRow = first((await c.query<{ now: Date }>('SELECT clock_timestamp() AS now')).rows);
+  const deps = await c.query<{ predecessor_id: string; gate: 'done' | 'commands_passed' }>(
+    'SELECT predecessor_id,gate FROM work.dependencies WHERE work_id=$1 ORDER BY predecessor_id',
+    [w.id],
   );
+  const depInputs: WorkDependencyStateInput[] = [];
   for (const d of deps.rows) {
-    const w = await item(c, d.predecessor_id);
-    if (
-      w.deleted_at ||
-      (d.gate === 'done'
-        ? w.status !== 'done'
-        : (await coverage(c, w)).coverage.state !== 'commands_passed')
-    )
-      return false;
+    const pred = await item(c, d.predecessor_id);
+    let predCoverageState: string | undefined;
+    if (!pred.deleted_at && d.gate === 'commands_passed') {
+      predCoverageState = (await coverage(c, pred)).coverage.state;
+    }
+    const satisfied =
+      !pred.deleted_at &&
+      (d.gate === 'done' ? pred.status === 'done' : predCoverageState === 'commands_passed');
+    depInputs.push({
+      workId: pred.id,
+      title: pred.title,
+      status: pred.status,
+      gate: d.gate,
+      satisfied,
+      deleted: pred.deleted_at !== null,
+      coverageState: predCoverageState,
+    });
   }
-  return true;
+  return deriveWorkClaimability(depInputs, {
+    status: w.status,
+    deleted: w.deleted_at !== null,
+    expiresAt: w.expires_at,
+    summary: w.summary,
+    nowMs: nowRow.now.getTime(),
+  });
 }
 async function display(c: PoolClient, w: WorkRow) {
   const { claim_digest: _digest, claim_principal: _claim, ...publicFields } = w;
-  const now = first(
-    (
-      await c.query<{ expired: boolean }>(
-        'SELECT $1::timestamptz <= clock_timestamp() AS expired',
-        [w.expires_at],
-      )
-    ).rows,
-  );
-  const ready = await dependenciesReady(c, w.id);
+  const derived = await evaluateClaimability(c, w);
   return {
     ...publicFields,
     ...(await coverage(c, w)),
-    claimable:
-      !w.deleted_at &&
-      ready &&
-      (w.status === 'queued' || (['claimed', 'running'].includes(w.status) && now.expired)),
+    claimable: derived.claimable,
+    claimability: toPublicClaimability(derived),
     links: (
       await c.query('SELECT target_id,relation FROM foundation.links WHERE source_id=$1', [w.id])
     ).rows,
@@ -163,7 +181,15 @@ async function assertLease(
     w.claim_digest !== agentWorkClaimTokenDigest(input.claimSecret) ||
     !valid
   )
-    fail(409, 'stale_lease', 'An active lease owned by this principal and epoch is required');
+    throw staleLeaseError({
+      workId: w.id,
+      status: w.status,
+      revision: w.revision,
+      currentEpoch: w.epoch,
+      providedEpoch: input.epoch,
+      expiresAt: w.expires_at,
+      leaseExpired: w.expires_at !== null ? !valid : undefined,
+    });
 }
 export async function workOperation(
   c: PoolClient,
@@ -328,18 +354,25 @@ export async function workOperation(
     const artifactCountById = new Map<string, number>();
     for (const row of artifactCountRows) artifactCountById.set(row.work_id, row.count);
 
-    const depsReadyById = new Map<string, boolean>();
-    for (const id of ids) depsReadyById.set(id, true);
+    const depInputsById = new Map<string, WorkDependencyStateInput[]>();
+    for (const id of ids) depInputsById.set(id, []);
 
     const graphEdges = depsRows.map((d) => {
       const pred = rowById.get(d.predecessor_id);
+      const predCoverageState = pred ? coverageById.get(pred.id)?.state : undefined;
       const satisfied =
         !!pred &&
         !pred.deleted_at &&
-        (d.gate === 'done'
-          ? pred.status === 'done'
-          : coverageById.get(pred.id)?.state === 'commands_passed');
-      if (!satisfied) depsReadyById.set(d.work_id, false);
+        (d.gate === 'done' ? pred.status === 'done' : predCoverageState === 'commands_passed');
+      depInputsById.get(d.work_id)?.push({
+        workId: d.predecessor_id,
+        ...(pred ? { title: pred.title } : {}),
+        status: pred ? pred.status : 'unknown',
+        gate: d.gate,
+        satisfied,
+        deleted: !pred || pred.deleted_at !== null,
+        coverageState: predCoverageState,
+      });
       return {
         work_id: d.work_id,
         predecessor_id: d.predecessor_id,
@@ -349,12 +382,13 @@ export async function workOperation(
     });
 
     const graphNodes = rows.map((r) => {
-      const expired = r.expires_at !== null && r.expires_at.getTime() <= nowMs;
-      const ready = depsReadyById.get(r.id) ?? true;
-      const claimable =
-        !r.deleted_at &&
-        ready &&
-        (r.status === 'queued' || (['claimed', 'running'].includes(r.status) && expired));
+      const derived = deriveWorkClaimability(depInputsById.get(r.id) ?? [], {
+        status: r.status,
+        deleted: r.deleted_at !== null,
+        expiresAt: r.expires_at,
+        summary: r.summary,
+        nowMs,
+      });
       return {
         id: r.id,
         revision: r.revision,
@@ -363,7 +397,9 @@ export async function workOperation(
         status: r.status,
         plan_version: r.plan_version,
         summary: r.summary,
-        claimable,
+        claimable: derived.claimable,
+        claimability: toPublicClaimability(derived),
+        expires_at: r.expires_at,
         deleted_at: r.deleted_at,
         created_at: r.created_at,
         coverage: coverageById.get(r.id)!,
@@ -477,9 +513,51 @@ export async function workOperation(
   }
   if (name === 'work.fork') {
     const v = operations[name].input.parse(input);
-    if (w.status !== 'queued' && w.status !== 'blocked')
-      fail(409, 'invalid_transition', 'Fork only queued or blocked work');
-    if (w.revision !== v.revision) fail(409, 'revision_conflict', 'Work revision changed');
+    const isActiveLease = w.status === 'claimed' || w.status === 'running';
+    const isUnleasedForkable =
+      w.status === 'queued' || w.status === 'blocked' || w.status === 'failed';
+    if (!isActiveLease && !isUnleasedForkable) {
+      const derived = await evaluateClaimability(c, w);
+      throw invalidTransitionError({
+        workId: w.id,
+        operation: name,
+        status: w.status,
+        revision: w.revision,
+        message: 'Fork only queued, blocked, failed, or actively leased work',
+        claimability: toPublicClaimability(derived),
+      });
+    }
+    if (isActiveLease) {
+      if (v.claimSecret === undefined || v.epoch === undefined) {
+        const valid = first(
+          (
+            await c.query<{ valid: boolean }>(
+              'SELECT $1::timestamptz > clock_timestamp() AS valid',
+              [w.expires_at],
+            )
+          ).rows,
+        ).valid;
+        throw staleLeaseError({
+          workId: w.id,
+          status: w.status,
+          revision: w.revision,
+          currentEpoch: w.epoch,
+          providedEpoch: v.epoch,
+          expiresAt: w.expires_at,
+          leaseExpired: w.expires_at !== null ? !valid : undefined,
+        });
+      }
+      await assertLease(c, p, w, { claimSecret: v.claimSecret, epoch: v.epoch });
+    }
+    if (w.revision !== v.revision) {
+      throw revisionConflictError({
+        workId: w.id,
+        operation: name,
+        expectedRevision: v.revision,
+        actualRevision: w.revision,
+        status: w.status,
+      });
+    }
     const parentProjectLinks = (
       await c.query<{ target_id: string }>(
         "SELECT target_id FROM foundation.links WHERE source_id=$1 AND relation='belongs_to'",
@@ -511,7 +589,7 @@ export async function workOperation(
     const current = await coverage(c, w);
     await plan(c, p, w.id, w.plan_version + 1, current.plan.steps, v.reason);
     await c.query(
-      "UPDATE work.items SET status='queued',plan_version=plan_version+1,summary=NULL,revision=revision+1 WHERE id=$1",
+      "UPDATE work.items SET status='queued',claim_principal=NULL,claim_digest=NULL,expires_at=NULL,plan_version=plan_version+1,summary=NULL,revision=revision+1 WHERE id=$1",
       [w.id],
     );
     const updatedParent = await item(c, w.id);
@@ -520,6 +598,7 @@ export async function workOperation(
       planVersion: updatedParent.plan_version,
       branchIds,
       gate: v.gate,
+      ...(isActiveLease ? { releasedLease: true } : {}),
     });
     const branches = await Promise.all(
       branchIds.map(async (bid) => display(c, await item(c, bid))),
@@ -529,9 +608,26 @@ export async function workOperation(
   let artifactId: string | undefined;
   if (name === 'work.update' || name === 'work.dependencies.set') {
     const a = operations[name].input.parse(input);
-    if (w.status !== 'queued' && w.status !== 'blocked')
-      fail(409, 'invalid_transition', 'Edit only queued or blocked work');
-    if (w.revision !== a.revision) fail(409, 'revision_conflict', 'Work revision changed');
+    if (w.status !== 'queued' && w.status !== 'blocked') {
+      const derived = await evaluateClaimability(c, w);
+      throw invalidTransitionError({
+        workId: w.id,
+        operation: name,
+        status: w.status,
+        revision: w.revision,
+        message: 'Edit only queued or blocked work',
+        claimability: toPublicClaimability(derived),
+      });
+    }
+    if (w.revision !== a.revision) {
+      throw revisionConflictError({
+        workId: w.id,
+        operation: name,
+        expectedRevision: a.revision,
+        actualRevision: w.revision,
+        status: w.status,
+      });
+    }
     if (name === 'work.update') {
       const v = operations[name].input.parse(input);
       await c.query('UPDATE work.items SET title=$2,description=$3 WHERE id=$1', [
@@ -553,7 +649,7 @@ export async function workOperation(
               [d.id, w.id],
             )
           ).rowCount;
-        if (cycle) fail(409, 'dependency_cycle', 'Dependency would create a cycle');
+        if (cycle) throw dependencyCycleError({ workId: w.id, predecessorId: d.id });
       }
       await c.query('DELETE FROM work.dependencies WHERE work_id=$1', [w.id]);
       for (const d of v.dependencies)
@@ -580,12 +676,16 @@ export async function workOperation(
     );
   } else if (name === 'work.claim') {
     const v = operations[name].input.parse(input);
-    if (!(await display(c, w)).claimable)
-      fail(
-        409,
-        'not_claimable',
-        'Work is terminal, leased, in review, or waiting for dependencies',
-      );
+    const derived = await evaluateClaimability(c, w);
+    if (!derived.claimable) {
+      throw notClaimableError({
+        workId: w.id,
+        status: w.status,
+        revision: w.revision,
+        claimability: toPublicClaimability(derived),
+        expiresAt: w.expires_at,
+      });
+    }
     await c.query(
       "UPDATE work.items SET status='claimed',epoch=epoch+1,claim_principal=$2,claim_digest=$3,expires_at=clock_timestamp()+$4*interval '1 second' WHERE id=$1",
       [w.id, p.id, agentWorkClaimTokenDigest(v.claimSecret), v.leaseSeconds],

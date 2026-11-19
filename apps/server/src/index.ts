@@ -40,7 +40,16 @@ export async function startServer(databaseUrl: string, port = 8080, host = '127.
   app.use(
     (err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
       if (err instanceof SiftError) {
-        res.status(err.status).json({ error: { code: err.code, message: err.message } });
+        res.status(err.status).json({
+          error: {
+            code: err.code,
+            message: err.message,
+            ...(err.suggestions && err.suggestions.length > 0
+              ? { suggestions: err.suggestions }
+              : {}),
+            ...(err.details ? { details: err.details } : {}),
+          },
+        });
         return;
       }
       if (err instanceof ZodError) {

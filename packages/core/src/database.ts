@@ -155,6 +155,9 @@ export async function migrate(adminUrl: string, selected: string[]): Promise<Man
       if (active.has(m.id) && m.requires.some((dependency) => !active.has(dependency)))
         throw new Error(`Enable required modules before installing ${m.id}`);
     }
+    if (plan.some((m) => m.id === 'context')) {
+      await c.query('SELECT context.sync_search_triggers()');
+    }
     await c.query('REVOKE INSERT,UPDATE,DELETE ON foundation.migrations FROM sift_runtime');
     await c.query(
       'REVOKE ALL ON foundation.principals FROM sift_runtime; REVOKE ALL ON FUNCTION foundation.authenticate(text) FROM PUBLIC; GRANT EXECUTE ON FUNCTION foundation.authenticate(text) TO sift_runtime;',
