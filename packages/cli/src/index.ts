@@ -14,6 +14,7 @@ import {
   databaseUrlFromEnvironment,
 } from '@siftable/core';
 import { SiftClient, readCredentials, type Credentials } from '@siftable/client';
+import { CONNECT_HARNESSES, ConnectError, connectHelp, runConnect } from './connect.js';
 const { positionals, values } = parseArgs({
   allowPositionals: true,
   options: {
@@ -31,6 +32,16 @@ const { positionals, values } = parseArgs({
     file: { type: 'string' },
     key: { type: 'string' },
     id: { type: 'string' },
+    'dry-run': { type: 'boolean' },
+    target: { type: 'string' },
+    'repo-root': { type: 'string' },
+    node: { type: 'string' },
+    'owner-config': { type: 'string' },
+    'worker-config': { type: 'string' },
+    'allow-owner-mcp': { type: 'boolean' },
+    demo: { type: 'boolean' },
+    tools: { type: 'string' },
+    'project-dir': { type: 'string' },
   },
 });
 const [command, ...rest] = positionals;
@@ -499,12 +510,17 @@ async function main() {
     });
     return;
   }
+  if (command === 'connect' && values.help) {
+    print(connectHelp(rest[0]));
+    return;
+  }
   if (
     values.help &&
     command &&
     ![
       'catalog',
       'config.info',
+      'connect',
       'doctor',
       'init',
       'install',
@@ -526,6 +542,8 @@ async function main() {
         'sift config.info --config <file> (local identity metadata only; no token or authority check)',
       doctor:
         'sift doctor [--config <file>] (secret-safe diagnostics for config, URL, /health, /v1/catalog, and modules)',
+      connect:
+        'sift connect <antigravity|codex|t3-code|claude|cursor> [options] (configure harness MCP & portable skill using absolute paths; see `sift connect --help`)',
       administration: [
         'init --modules projects,context,work,planning,extensions --output <credential-file> --url http://127.0.0.1:8088',
         'modules-plan --modules context',
@@ -540,6 +558,32 @@ async function main() {
       operations: Object.keys(operations),
       modules: moduleIds,
     });
+    return;
+  }
+  if (command === 'connect') {
+    const harness = rest[0];
+    if (!harness || rest.length > 1) {
+      throw new ConnectError(
+        `Expected a single harness name (${CONNECT_HARNESSES.join('|')}).`,
+        'invalid_input',
+        ['Run `sift connect --help` to see supported harnesses and options.'],
+      );
+    }
+    print(
+      await runConnect({
+        harness,
+        dryRun: Boolean(values['dry-run']),
+        target: values.target,
+        repoRoot: values['repo-root'],
+        node: values.node,
+        ownerConfig: values['owner-config'],
+        workerConfig: values['worker-config'],
+        allowOwnerMcp: Boolean(values['allow-owner-mcp']),
+        demo: Boolean(values.demo),
+        tools: values.tools,
+        projectDir: values['project-dir'],
+      }),
+    );
     return;
   }
   if (command === 'backup-verify') {
