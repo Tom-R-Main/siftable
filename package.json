@@ -16,6 +16,8 @@
     "test": "npm run build && node --test tests/*.test.mjs",
     "test:acceptance": "npm run build && node --test --test-concurrency=1 tests/acceptance/*.test.mjs",
     "sift": "node packages/cli/dist/index.js",
+    "ui": "node apps/graph-ui/dist/server.js",
+    "plugin:install": "node scripts/install-antigravity-plugin.mjs",
     "local": "node scripts/local.mjs",
     "test:isolated": "npm run build && node scripts/acceptance.mjs",
     "format": "prettier --write \"packages/*/src/**/*.ts\" \"apps/*/src/**/*.ts\" \"scripts/**/*.mjs\" \"tests/**/*.mjs\"",

@@ -6,6 +6,7 @@ import { digest } from './database.js';
 import { agentWorkClaimTokenDigest } from './claimDigest.js';
 import { deriveVerificationCoverage } from './verificationCoverage.js';
 import type { VerificationStep } from './verificationTypes.js';
+import { buildWorkGraph } from './workGraph.js';
 import { entity, reference, link, first, fail } from './helpers.js';
 interface WorkRow {
   id: string;
@@ -22,6 +23,7 @@ interface WorkRow {
   summary: string | null;
   accepted_by: string | null;
   accepted_plan_version: number | null;
+  created_at: Date;
 }
 async function item(c: PoolClient, id: string): Promise<WorkRow> {
   return first(
@@ -211,6 +213,167 @@ export async function workOperation(
     );
     return Promise.all(r.rows.map((w) => display(c, w)));
   }
+  if (name === 'work.graph') {
+    const a = operations[name].input.parse(input);
+    const itemsResult = a.projectId
+      ? await c.query<WorkRow>(
+          "SELECT w.*,e.deleted_at FROM work.items w JOIN foundation.entities e USING(id) JOIN foundation.links l ON l.source_id=w.id AND l.target_id=$1 AND l.relation='belongs_to' WHERE ($2 OR e.deleted_at IS NULL) ORDER BY w.created_at,w.id",
+          [a.projectId, a.includeDeleted],
+        )
+      : await c.query<WorkRow>(
+          'SELECT w.*,e.deleted_at FROM work.items w JOIN foundation.entities e USING(id) WHERE ($1 OR e.deleted_at IS NULL) ORDER BY w.created_at,w.id',
+          [a.includeDeleted],
+        );
+    const rows = itemsResult.rows;
+    if (rows.length === 0) return buildWorkGraph([], [], { rootId: a.rootId });
+
+    const ids = rows.map((r) => r.id);
+    const nowRow = first((await c.query<{ now: Date }>('SELECT clock_timestamp() AS now')).rows);
+    const nowMs = nowRow.now.getTime();
+
+    const depsRows = (
+      await c.query<{ work_id: string; predecessor_id: string; gate: 'done' | 'commands_passed' }>(
+        'SELECT work_id,predecessor_id,gate FROM work.dependencies WHERE work_id = ANY($1::uuid[]) ORDER BY work_id,predecessor_id',
+        [ids],
+      )
+    ).rows;
+
+    const rowById = new Map<string, WorkRow>();
+    for (const r of rows) rowById.set(r.id, r);
+    const externalPredIds = [
+      ...new Set(depsRows.map((d) => d.predecessor_id).filter((pid) => !rowById.has(pid))),
+    ];
+    if (externalPredIds.length > 0) {
+      const extRows = (
+        await c.query<WorkRow>(
+          'SELECT w.*,e.deleted_at FROM work.items w JOIN foundation.entities e USING(id) WHERE w.id = ANY($1::uuid[])',
+          [externalPredIds],
+        )
+      ).rows;
+      for (const r of extRows) rowById.set(r.id, r);
+    }
+
+    const allEvalIds = [...rowById.keys()];
+    const planRows = (
+      await c.query<{ work_id: string; version: number; steps: VerificationStep[] }>(
+        'SELECT work_id,version,steps FROM work.plans WHERE work_id = ANY($1::uuid[])',
+        [allEvalIds],
+      )
+    ).rows;
+    const planByKey = new Map<string, VerificationStep[]>();
+    for (const pl of planRows) planByKey.set(`${pl.work_id}:${pl.version}`, pl.steps);
+
+    const evidenceRows = (
+      await c.query<{
+        work_id: string;
+        plan_version: number;
+        step_id: string;
+        outcome: 'passed' | 'failed' | 'error';
+        created_at: Date;
+        sequence: string;
+      }>(
+        'SELECT work_id,plan_version,step_id,outcome,created_at,sequence FROM work.evidence WHERE work_id = ANY($1::uuid[]) ORDER BY sequence',
+        [allEvalIds],
+      )
+    ).rows;
+    const evidenceByKey = new Map<
+      string,
+      {
+        stepId: string;
+        outcome: 'passed' | 'failed' | 'error';
+        ranAt: string;
+        createdAt: string;
+        sequence: number;
+      }[]
+    >();
+    for (const ev of evidenceRows) {
+      const k = `${ev.work_id}:${ev.plan_version}`;
+      const list = evidenceByKey.get(k) ?? [];
+      list.push({
+        stepId: ev.step_id,
+        outcome: ev.outcome,
+        ranAt: ev.created_at.toISOString(),
+        createdAt: ev.created_at.toISOString(),
+        sequence: Number(ev.sequence),
+      });
+      evidenceByKey.set(k, list);
+    }
+
+    const coverageById = new Map<string, ReturnType<typeof deriveVerificationCoverage>>();
+    for (const [id, r] of rowById.entries()) {
+      const k = `${id}:${r.plan_version}`;
+      const steps = planByKey.get(k) ?? [];
+      coverageById.set(id, deriveVerificationCoverage(steps, evidenceByKey.get(k) ?? []));
+    }
+
+    const linkRows = (
+      await c.query<{ source_id: string; target_id: string; relation: string }>(
+        'SELECT source_id,target_id,relation FROM foundation.links WHERE source_id = ANY($1::uuid[])',
+        [ids],
+      )
+    ).rows;
+    const linksById = new Map<string, { target_id: string; relation: string }[]>();
+    for (const l of linkRows) {
+      const list = linksById.get(l.source_id) ?? [];
+      list.push({ target_id: l.target_id, relation: l.relation });
+      linksById.set(l.source_id, list);
+    }
+
+    const artifactCountRows = (
+      await c.query<{ work_id: string; count: number }>(
+        'SELECT work_id,COUNT(*)::int AS count FROM work.artifacts WHERE work_id = ANY($1::uuid[]) GROUP BY work_id',
+        [ids],
+      )
+    ).rows;
+    const artifactCountById = new Map<string, number>();
+    for (const row of artifactCountRows) artifactCountById.set(row.work_id, row.count);
+
+    const depsReadyById = new Map<string, boolean>();
+    for (const id of ids) depsReadyById.set(id, true);
+
+    const graphEdges = depsRows.map((d) => {
+      const pred = rowById.get(d.predecessor_id);
+      const satisfied =
+        !!pred &&
+        !pred.deleted_at &&
+        (d.gate === 'done'
+          ? pred.status === 'done'
+          : coverageById.get(pred.id)?.state === 'commands_passed');
+      if (!satisfied) depsReadyById.set(d.work_id, false);
+      return {
+        work_id: d.work_id,
+        predecessor_id: d.predecessor_id,
+        gate: d.gate,
+        satisfied,
+      };
+    });
+
+    const graphNodes = rows.map((r) => {
+      const expired = r.expires_at !== null && r.expires_at.getTime() <= nowMs;
+      const ready = depsReadyById.get(r.id) ?? true;
+      const claimable =
+        !r.deleted_at &&
+        ready &&
+        (r.status === 'queued' || (['claimed', 'running'].includes(r.status) && expired));
+      return {
+        id: r.id,
+        revision: r.revision,
+        title: r.title,
+        description: r.description,
+        status: r.status,
+        plan_version: r.plan_version,
+        summary: r.summary,
+        claimable,
+        deleted_at: r.deleted_at,
+        created_at: r.created_at,
+        coverage: coverageById.get(r.id)!,
+        links: linksById.get(r.id) ?? [],
+        artifactCount: artifactCountById.get(r.id) ?? 0,
+      };
+    });
+
+    return buildWorkGraph(graphNodes, graphEdges, { rootId: a.rootId });
+  }
   const a = operations[name].input.parse(input) as { id: string };
   const w = await item(c, a.id);
   if (
@@ -311,6 +474,57 @@ export async function workOperation(
     const result = await setDeleted(c, 'work', a, name.endsWith('.restore'));
     await event(c, p, w.id, name, { reason: a.reason });
     return { ...result, deleted: name.endsWith('.delete') };
+  }
+  if (name === 'work.fork') {
+    const v = operations[name].input.parse(input);
+    if (w.status !== 'queued' && w.status !== 'blocked')
+      fail(409, 'invalid_transition', 'Fork only queued or blocked work');
+    if (w.revision !== v.revision) fail(409, 'revision_conflict', 'Work revision changed');
+    const parentProjectLinks = (
+      await c.query<{ target_id: string }>(
+        "SELECT target_id FROM foundation.links WHERE source_id=$1 AND relation='belongs_to'",
+        [w.id],
+      )
+    ).rows;
+    const defaultSteps = [
+      { key: 'complete', title: 'Complete branch and record handback summary', required: true },
+    ];
+    const branchIds: string[] = [];
+    for (const branch of v.branches) {
+      const branchId = await entity(c, p, 'work.item');
+      await c.query(
+        'INSERT INTO work.items(id,owner_id,scope_id,title,description) VALUES($1,$2,$3,$4,$5)',
+        [branchId, p.ownerId, p.scopeId, branch.title, branch.description],
+      );
+      await plan(c, p, branchId, 1, branch.steps ?? defaultSteps, `Forked from ${w.id}`);
+      for (const proj of parentProjectLinks) {
+        await reference(c, proj.target_id, 'projects.project');
+        await link(c, p, branchId, proj.target_id, 'belongs_to');
+      }
+      await c.query(
+        'INSERT INTO work.dependencies(owner_id,scope_id,work_id,predecessor_id,gate) VALUES($1,$2,$3,$4,$5)',
+        [p.ownerId, p.scopeId, w.id, branchId, v.gate],
+      );
+      await event(c, p, branchId, 'created', { forkedFrom: w.id });
+      branchIds.push(branchId);
+    }
+    const current = await coverage(c, w);
+    await plan(c, p, w.id, w.plan_version + 1, current.plan.steps, v.reason);
+    await c.query(
+      "UPDATE work.items SET status='queued',plan_version=plan_version+1,summary=NULL,revision=revision+1 WHERE id=$1",
+      [w.id],
+    );
+    const updatedParent = await item(c, w.id);
+    await event(c, p, w.id, 'work.fork', {
+      reason: v.reason,
+      planVersion: updatedParent.plan_version,
+      branchIds,
+      gate: v.gate,
+    });
+    const branches = await Promise.all(
+      branchIds.map(async (bid) => display(c, await item(c, bid))),
+    );
+    return { parent: await display(c, updatedParent), branches };
   }
   let artifactId: string | undefined;
   if (name === 'work.update' || name === 'work.dependencies.set') {

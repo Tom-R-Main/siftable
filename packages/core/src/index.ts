@@ -16,6 +16,20 @@ import { extensionOperation } from './extensions.js';
 export * from './database.js';
 export * from './backup.js';
 export { deriveVerificationCoverage } from './verificationCoverage.js';
+export type { VerificationCoverage, VerificationStep } from './verificationTypes.js';
+export {
+  buildWorkGraph,
+  deriveWorkUiState,
+  type WorkGraphCounts,
+  type WorkGraphEdge,
+  type WorkGraphEdgeInput,
+  type WorkGraphLink,
+  type WorkGraphNode,
+  type WorkGraphNodeInput,
+  type WorkGraphResult,
+  type WorkGraphRootSummary,
+  type WorkUiState,
+} from './workGraph.js';
 export async function catalog(pool: Pool, token: string, profile?: string[]) {
   const principal = await authenticate(pool, token);
   const installed = await pool.query<{ id: string }>(
