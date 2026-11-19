@@ -2,10 +2,10 @@
 name: siftable-dag
 description: >-
   Plan, fork, execute, and hand back dependency-ordered work graphs using local
-  Siftable MCP tools and the Siftable Graph sidecar pane. Use when decomposing
-  multi-step engineering work into a DAG, picking up the next claimable frontier
-  items, running parallel subagents or swarm workers over dependent tasks, or
-  recording handback summaries and verification evidence.
+  Siftable MCP tools and the Siftable Graph sidecar pane in Antigravity. Use
+  when decomposing multi-step engineering work into a DAG, picking up the next
+  claimable frontier items, running parallel subagents or swarm workers over
+  dependent tasks, or recording handback summaries and verification evidence.
 ---
 
 # Siftable Dependency-Ordered Work Graph (DAG)
@@ -15,17 +15,11 @@ and parallel agent work. Every mutation requires a stable `requestKey` (retry
 identical input with the same key after a lost response; use a new key for
 changed input).
 
-## 1. Open the Graph Side Pane
+This plugin skill mirrors the portable workflow in
+`.agents/skills/siftable-dag/SKILL.md` and adds Antigravity-specific surface
+guidance below.
 
-When working on a Siftable DAG, surface the interactive Graph sidecar pill once
-so the user can inspect dependencies, read handbacks, and accept `Needs you`
-items directly inside Antigravity:
-
-```markdown
-[Siftable Graph](sidecar://siftable-graph/graph/)
-```
-
-## 2. Inspect the Frontier First
+## 1. Inspect the Frontier First
 
 1. Call `work_graph` (optionally scoped by `projectId` or `rootId`) to retrieve:
    - `nodes`: each item's `uiState` (`ready`, `waiting`, `active`, `needs_you`,
@@ -39,7 +33,7 @@ items directly inside Antigravity:
    predecessors' handbacks (`work_get` + `work_artifacts_get`) so upstream
    decisions and results carry forward accurately.
 
-## 3. Standard Execution & Handback Loop
+## 2. Standard Execution & Handback Loop
 
 For each claimed work item:
 
@@ -54,10 +48,11 @@ For each claimed work item:
      (`passed` | `failed` | `error`), bounded `output`, and `provenance`.
 5. Submit for human review:
    - `work_review` with a concise `summary`.
-   - Do **not** attempt to self-accept work; the user accepts via the Siftable
-     Graph sidecar pane (`✓ Accept`) or owner CLI (`work.accept`).
+   - Do **not** attempt to self-accept work; the human operator accepts via the
+     Graph UI (`http://127.0.0.1:7041`), the Antigravity sidecar pane
+     (`✓ Accept`), or the owner CLI (`work.accept`).
 
-## 4. Forking a Task into Parallel Branches
+## 3. Forking a Task into Parallel Branches
 
 When a task splits into independent sub-questions or implementation branches:
 
@@ -69,13 +64,33 @@ When a task splits into independent sub-questions or implementation branches:
    predecessors on the parent, bumps the parent's plan version, and sets the
    parent back to `queued` (waiting until all child branches settle).
 
-## 5. Parallel Frontier Execution in Antigravity
+## 4. Parallel Wave Execution
 
 When `work_graph` shows multiple `ready` (`claimable: true`) leaves:
 
-- **Single-chat fan-out:** Spawn parallel subagents (or a `run_workflow` script),
-  assigning each worker a distinct `ready` work ID and isolated workspace
-  (`share` or `branch`). Siftable's atomic `work_claim` prevents double-claiming.
-- **Persistent team (`/teamwork`):** Workers pull `ready` items from `work_graph`
-  in parallel, submit `work_review`, and pick up the next unblocked wave as soon
-  as predecessors satisfy their gate.
+- Dispatch parallel workers, assigning each worker a distinct `ready` work ID
+  and an isolated workspace or git worktree. Siftable's atomic `work_claim`
+  prevents double-claiming.
+- Workers submit `work_review` independently and pick up the next unblocked wave
+  as soon as predecessors satisfy their gate.
+- If a sandboxed CLI invocation cannot write lease custody next to its
+  credential file, set `SIFT_LEASE_DIR` to a private (`0700`) writable
+  directory.
+
+## Antigravity-Specific Surface Notes
+
+Apply these additions **only** inside Antigravity sessions (outside Antigravity,
+use the standalone Graph UI at `http://127.0.0.1:7041` and never emit
+`sidecar://` links):
+
+- **Graph Sidecar Pane:** Surface the interactive sidecar pill once when helpful
+  so the user can inspect dependencies, read handbacks, and accept `Needs you`
+  items directly in Antigravity:
+
+  ```markdown
+  [Siftable Graph](sidecar://siftable-graph/graph/)
+  ```
+
+- **Parallel Dispatch:** Use Antigravity parallel subagents, `run_workflow`, or
+  swarm workers with isolated `share` / `branch` workspaces for independent
+  `ready` frontier items.
