@@ -11,6 +11,11 @@ test('graph-ui server serves HTML, DAG API, fork, accept, and handback artifacts
     assert.equal(htmlRes.headers.get('x-content-type-options'), 'nosniff');
     const html = await htmlRes.text();
     assert.match(html, /<title>Siftable Graph<\/title>/);
+    assert.equal(
+      /window\.(prompt|confirm|alert)\s*\(/.test(html),
+      false,
+      'Webview-blocked browser dialogs must not be used',
+    );
     const scriptMatch = html.match(/<script>([\s\S]*?)<\/script>/);
     assert.ok(scriptMatch, 'Expected inline script block');
     new vm.Script(scriptMatch[1]);
