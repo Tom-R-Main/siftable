@@ -9,6 +9,18 @@ export const moduleIds = [
 ] as const;
 export type ModuleId = (typeof moduleIds)[number];
 export const moduleSchema = z.enum(moduleIds);
+export const searchDomains = ['note', 'task', 'project', 'object'] as const;
+export type SearchDomain = (typeof searchDomains)[number];
+export const searchDomainSchema = z.enum(searchDomains);
+export const packetOmissionTypes = [
+  'budget_exceeded',
+  'module_disabled',
+  'scope_excluded',
+  'not_found',
+  'deleted',
+] as const;
+export type PacketOmissionType = (typeof packetOmissionTypes)[number];
+export const packetOmissionTypeSchema = z.enum(packetOmissionTypes);
 export const id = z.uuid();
 const title = z.string().trim().min(1).max(500);
 const text = z.string().max(100_000);
@@ -119,6 +131,20 @@ export const operations = {
     false,
     z.object({ query: z.string().min(1).max(500), ...page }).strict(),
   ),
+  'context.search': op(
+    'context',
+    false,
+    false,
+    z
+      .object({
+        query: z.string().trim().min(1).max(500),
+        domains: z.array(searchDomainSchema).min(1).max(4).optional(),
+        projectId: id.optional(),
+        limit: z.number().int().min(1).max(50).default(20),
+        includeDeleted: z.boolean().default(false),
+      })
+      .strict(),
+  ),
   'context.packet': op(
     'context',
     true,
@@ -127,6 +153,7 @@ export const operations = {
       .object({
         noteIds: z.array(id).max(100),
         maxChars: z.number().int().min(1).max(100_000).default(8000),
+        omitUnavailable: z.boolean().default(false),
       })
       .strict(),
   ),

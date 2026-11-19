@@ -241,11 +241,11 @@ test('standalone headless acceptance on real PostgreSQL and subprocess clients',
           );
           assert.equal(
             (await pool.query('SELECT count(*)::int AS n FROM foundation.migrations')).rows[0].n,
-            13,
+            14,
           );
           assert.ok(
             (await callCli(legacy, 'modules.list', {})).every(
-              (m) => m.version === (m.id === 'projects' ? 3 : 2),
+              (m) => m.version === (m.id === 'projects' || m.id === 'context' ? 3 : 2),
             ),
           );
           await cli(['install', '--modules', 'context'], legacy.adminUrl);
@@ -1135,11 +1135,14 @@ test('standalone headless acceptance on real PostgreSQL and subprocess clients',
         const packet = await invoke(f.owner, 'context.packet', { noteIds: [note.id], maxChars: 1 });
         assert.equal(packet.manifest.items.length, 0);
         assert.equal(packet.manifest.omissions[0].reason, 'character_budget');
+        assert.equal(packet.manifest.omissions[0].omissionType, 'budget_exceeded');
+        assert.match(packet.manifest.scopedCandidateDigest, /^[a-f0-9]{64}$/);
         const packet2 = await invoke(f.owner, 'context.packet', {
           noteIds: [note.id],
           maxChars: 10000,
         });
         assert.equal(packet2.manifest.items[0].revision, 1);
+        assert.equal(packet2.manifest.scopedCandidateDigest, packet.manifest.scopedCandidateDigest);
         await invoke(f.owner, 'notes.update', {
           id: note.id,
           revision: 1,
@@ -1658,6 +1661,267 @@ test('standalone headless acceptance on real PostgreSQL and subprocess clients',
             }),
           'not_found',
         );
+      },
+    );
+    await t.test(
+      'context.search indexes all domains via triggers with prefix fallback, RLS/delete/module isolation, and typed packet omissions',
+      async () => {
+        const searchProject = await callCli(f, 'projects.create', {
+          title: 'Zephyrlattice search project',
+          instructions: 'Cross-domain full text indexing benchmark',
+        });
+        const unrelatedProject = await callCli(f, 'projects.create', {
+          title: 'Zephyrlattice unrelated project',
+          instructions: 'Must be filtered out when projectId is set',
+        });
+        const searchNote = await callCli(f, 'notes.create', {
+          title: 'Zephyrlattice architecture note',
+          body: 'Trigger-synced search vector without embeddings',
+          projectId: searchProject.id,
+          source: 'fixture://search/note',
+        });
+        const searchNote2 = await callCli(f, 'notes.create', {
+          title: 'Companion packet note',
+          body: 'Secondary scoped candidate for digest checks',
+          projectId: searchProject.id,
+        });
+        const searchTask = await callCli(f, 'tasks.create', {
+          title: 'Zephyrlattice verification task',
+          projectId: searchProject.id,
+          acceptance: 'Confirm cross-domain ranking and domain filters',
+        });
+        const searchObj = await callCli(f, 'objects.create', {
+          type: 'research.paper',
+          version: 2,
+          data: {
+            title: 'Zephyrlattice whitepaper',
+            year: 2026,
+            url: 'fixture://zephyrlattice-paper',
+          },
+        });
+
+        // Cross-domain search finds all 4 domains with FTS matchMode.
+        const allHits = await invoke(f.owner, 'context.search', { query: 'zephyrlattice' });
+        assert.equal(allHits.matchMode, 'fts');
+        assert.equal(allHits.query, 'zephyrlattice');
+        const hitById = new Map(allHits.items.map((item) => [item.entityId, item]));
+        assert.equal(hitById.get(searchProject.id)?.domain, 'project');
+        assert.equal(hitById.get(searchProject.id)?.entityType, 'projects.project');
+        assert.equal(hitById.get(searchProject.id)?.projectId, searchProject.id);
+        assert.equal(hitById.get(searchNote.id)?.domain, 'note');
+        assert.equal(hitById.get(searchNote.id)?.entityType, 'context.note');
+        assert.equal(hitById.get(searchNote.id)?.projectId, searchProject.id);
+        assert.equal(hitById.get(searchTask.id)?.domain, 'task');
+        assert.equal(hitById.get(searchTask.id)?.entityType, 'planning.task');
+        assert.equal(hitById.get(searchTask.id)?.projectId, searchProject.id);
+        assert.equal(hitById.get(searchObj.id)?.domain, 'object');
+        assert.equal(hitById.get(searchObj.id)?.entityType, 'research.paper');
+        assert.ok(allHits.items.every((item) => typeof item.score === 'number' && item.score > 0));
+
+        // Domain filter restricts results strictly to requested domains.
+        const noteAndTask = await invoke(f.owner, 'context.search', {
+          query: 'zephyrlattice',
+          domains: ['note', 'task'],
+        });
+        assert.deepEqual(
+          noteAndTask.items.map((i) => i.entityId).sort(),
+          [searchNote.id, searchTask.id].sort(),
+        );
+
+        // Project filter excludes unrelated project records and unlinked objects.
+        const projectOnly = await invoke(f.owner, 'context.search', {
+          query: 'zephyrlattice',
+          projectId: searchProject.id,
+        });
+        assert.deepEqual(
+          projectOnly.items.map((i) => i.entityId).sort(),
+          [searchProject.id, searchNote.id, searchTask.id].sort(),
+        );
+        assert.ok(!projectOnly.items.some((i) => i.entityId === unrelatedProject.id));
+
+        // Prefix fallback engages on zero FTS hits and sanitizes hostile punctuation safely.
+        const prefixHits = await invoke(f.owner, 'context.search', { query: 'zephyrlat' });
+        assert.equal(prefixHits.matchMode, 'prefix_fallback');
+        assert.ok(prefixHits.items.some((i) => i.entityId === searchNote.id));
+
+        const hostileQuery = await invoke(f.owner, 'context.search', {
+          query: "zephyrlat:!! & (|) 'arch--'",
+        });
+        assert.equal(hostileQuery.matchMode, 'prefix_fallback');
+        assert.ok(hostileQuery.items.some((i) => i.entityId === searchNote.id));
+
+        const punctuationOnly = await invoke(f.owner, 'context.search', { query: '!!! &&& :::' });
+        assert.equal(punctuationOnly.matchMode, 'fts');
+        assert.deepEqual(punctuationOnly.items, []);
+
+        // Trigger updates context.index on record update.
+        await callCli(f, 'notes.update', {
+          id: searchNote.id,
+          revision: 1,
+          title: 'Quasarbeacon updated note',
+          body: 'Replaced token after edit',
+        });
+        const afterEdit = await invoke(f.owner, 'context.search', { query: 'quasarbeacon' });
+        assert.equal(afterEdit.matchMode, 'fts');
+        assert.deepEqual(
+          afterEdit.items.map((i) => i.entityId),
+          [searchNote.id],
+        );
+
+        // Soft-delete hides records by default and surfaces them with includeDeleted: true.
+        const deletedNote = await callCli(f, 'notes.delete', {
+          id: searchNote.id,
+          revision: 2,
+          reason: 'Verify search soft-delete exclusion',
+        });
+        const hiddenSearch = await invoke(f.owner, 'context.search', { query: 'quasarbeacon' });
+        assert.deepEqual(hiddenSearch.items, []);
+        const includedSearch = await invoke(f.owner, 'context.search', {
+          query: 'quasarbeacon',
+          includeDeleted: true,
+        });
+        assert.equal(includedSearch.items.length, 1);
+        assert.equal(includedSearch.items[0].entityId, searchNote.id);
+        assert.ok(includedSearch.items[0].deletedAt);
+
+        // Typed packet omissions: budget_exceeded, deleted, not_found, and deterministic scopedCandidateDigest.
+        const missingId = randomUUID();
+        const omitPacket = await invoke(f.owner, 'context.packet', {
+          noteIds: [searchNote.id, missingId, searchNote2.id],
+          maxChars: 1,
+          omitUnavailable: true,
+        });
+        assert.equal(omitPacket.manifest.items.length, 0);
+        assert.equal(omitPacket.manifest.omissions.length, 3);
+        assert.deepEqual(
+          omitPacket.manifest.omissions.map((o) => ({
+            id: o.id,
+            omissionType: o.omissionType,
+            reason: o.reason,
+          })),
+          [
+            { id: searchNote.id, omissionType: 'deleted', reason: 'deleted' },
+            { id: missingId, omissionType: 'not_found', reason: 'not_found' },
+            { id: searchNote2.id, omissionType: 'budget_exceeded', reason: 'character_budget' },
+          ],
+        );
+        await reject(
+          () => invoke(f.owner, 'context.packet', { noteIds: [searchNote.id], maxChars: 1000 }),
+          'not_found',
+        );
+
+        // Restore note and verify order-independent pre-truncation scopedCandidateDigest.
+        await callCli(f, 'notes.restore', {
+          id: searchNote.id,
+          revision: deletedNote.revision,
+          reason: 'Restore for packet digest check',
+        });
+        const restoredSearch = await invoke(f.owner, 'context.search', { query: 'quasarbeacon' });
+        assert.equal(restoredSearch.items.length, 1);
+
+        const fullPacket = await invoke(f.owner, 'context.packet', {
+          noteIds: [searchNote.id, searchNote2.id],
+          maxChars: 10000,
+        });
+        const truncatedReversedPacket = await invoke(f.owner, 'context.packet', {
+          noteIds: [searchNote2.id, searchNote.id],
+          maxChars: 1,
+        });
+        assert.equal(fullPacket.manifest.items.length, 2);
+        assert.equal(truncatedReversedPacket.manifest.items.length, 0);
+        assert.ok(
+          truncatedReversedPacket.manifest.omissions.every(
+            (o) => o.omissionType === 'budget_exceeded' && o.reason === 'character_budget',
+          ),
+        );
+        assert.equal(
+          truncatedReversedPacket.manifest.scopedCandidateDigest,
+          fullPacket.manifest.scopedCandidateDigest,
+        );
+        await callCli(f, 'notes.update', {
+          id: searchNote2.id,
+          revision: 1,
+          body: 'Updated companion note changes candidate revision digest',
+        });
+        const postUpdatePacket = await invoke(f.owner, 'context.packet', {
+          noteIds: [searchNote.id, searchNote2.id],
+          maxChars: 10000,
+        });
+        assert.notEqual(
+          postUpdatePacket.manifest.scopedCandidateDigest,
+          fullPacket.manifest.scopedCandidateDigest,
+        );
+
+        // RLS isolates context.index across scopes, and agent RBAC restricts cross-module domains.
+        const searchOtherScope = await agent(
+          f,
+          'search_other_scope',
+          ['context:read', 'projects:read', 'planning:read', 'extensions:read'],
+          { scopeId: randomUUID() },
+        );
+        const crossScopeSearch = await invoke(searchOtherScope.client, 'context.search', {
+          query: 'zephyrlattice',
+        });
+        assert.deepEqual(crossScopeSearch.items, []);
+
+        // Worker a lacks planning:read, so task hits are excluded while project/object hits remain visible.
+        const workerSearch = await invoke(a.client, 'context.search', { query: 'zephyrlattice' });
+        assert.ok(workerSearch.items.some((i) => i.entityId === searchProject.id));
+        assert.ok(workerSearch.items.some((i) => i.entityId === searchObj.id));
+        assert.ok(!workerSearch.items.some((i) => i.entityId === searchTask.id));
+
+        // Late install of optional module attaches FTS triggers and disabled modules never leak into context.search.
+        const late = await fixture('late_fts', ['context']);
+        try {
+          const lateNote = await callCli(late, 'notes.create', {
+            title: 'Nebulavector context-only note',
+            body: 'Created before extensions module was installed',
+          });
+          await cli(['install', '--modules', 'extensions'], late.adminUrl);
+          await invoke(late.owner, 'extensions.define', {
+            type: 'research.memo',
+            version: 1,
+            schema: {
+              type: 'object',
+              properties: { title: { type: 'string' }, summary: { type: 'string' } },
+              required: ['title'],
+              additionalProperties: false,
+            },
+          });
+          const lateObj = await invoke(late.owner, 'objects.create', {
+            type: 'research.memo',
+            version: 1,
+            data: {
+              title: 'Nebulavector extension memo',
+              summary: 'Indexed via post-install sync',
+            },
+          });
+          const bothDomains = await invoke(late.owner, 'context.search', {
+            query: 'nebulavector',
+          });
+          assert.deepEqual(
+            bothDomains.items.map((i) => i.entityId).sort(),
+            [lateNote.id, lateObj.id].sort(),
+          );
+          await invoke(late.owner, 'modules.set', { module: 'extensions', enabled: false });
+          const afterDisable = await invoke(late.owner, 'context.search', {
+            query: 'nebulavector',
+          });
+          assert.deepEqual(
+            afterDisable.items.map((i) => i.entityId),
+            [lateNote.id],
+          );
+          await invoke(late.owner, 'modules.set', { module: 'extensions', enabled: true });
+          const afterReenable = await invoke(late.owner, 'context.search', {
+            query: 'nebulavector',
+          });
+          assert.deepEqual(
+            afterReenable.items.map((i) => i.entityId).sort(),
+            [lateNote.id, lateObj.id].sort(),
+          );
+        } finally {
+          await stop(late);
+        }
       },
     );
     await t.test(

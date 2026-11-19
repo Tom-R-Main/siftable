@@ -5,12 +5,119 @@ import {
   canonical,
   normalizeRootPath,
   normalizeGitRemoteUrl,
+  searchDomains,
+  type ModuleId,
   type Operation,
+  type PacketOmissionType,
   type Principal,
+  type SearchDomain,
 } from '@siftable/contracts';
 import { setDeleted } from './lifecycle.js';
 import { digest } from './database.js';
 import { entity, reference, link, first, fail } from './helpers.js';
+
+export const RECENCY_DECAY_HALF_LIFE_DAYS = 30;
+
+const DOMAIN_MODULE_MAP: Record<SearchDomain, ModuleId> = {
+  note: 'context',
+  task: 'planning',
+  project: 'projects',
+  object: 'extensions',
+};
+
+export interface PacketOmission {
+  id: string;
+  omissionType: PacketOmissionType;
+  reason: string;
+  requiredChars?: number;
+  remainingChars?: number;
+}
+
+export interface ScopedPacketCandidate {
+  id: string;
+  type: string;
+  revision: number;
+}
+
+export interface ContextSearchItem {
+  entityId: string;
+  domain: SearchDomain;
+  entityType: string;
+  projectId: string | null;
+  title: string;
+  snippet: string;
+  score: number;
+  updatedAt: string;
+  deletedAt: string | null;
+}
+
+export interface ContextSearchResult {
+  query: string;
+  matchMode: 'fts' | 'prefix_fallback';
+  items: ContextSearchItem[];
+}
+
+export function sanitizeSearchTerms(rawQuery: string): string[] {
+  const matches = rawQuery.match(/[\p{L}\p{N}]+/gu) ?? [];
+  const seen = new Set<string>();
+  const terms: string[] = [];
+  for (const raw of matches) {
+    const normalized = raw.toLowerCase().slice(0, 64);
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    terms.push(normalized);
+    if (terms.length >= 24) break;
+  }
+  return terms;
+}
+
+export function buildPrefixTsQuery(rawQuery: string): string | null {
+  const terms = sanitizeSearchTerms(rawQuery);
+  if (!terms.length) return null;
+  return terms.map((term) => `${term}:*`).join(' & ');
+}
+
+export function computeRecencyDecay(
+  ageDays: number,
+  halfLifeDays = RECENCY_DECAY_HALF_LIFE_DAYS,
+): number {
+  const clampedAge = Number.isFinite(ageDays) ? Math.max(ageDays, 0) : 0;
+  return 1 / (1 + clampedAge / halfLifeDays);
+}
+
+export function makeSearchSnippet(body: string, maxChars = 280): string {
+  const normalized = body.replace(/\s+/g, ' ').trim();
+  if (normalized.length <= maxChars) return normalized;
+  return `${normalized.slice(0, Math.max(0, maxChars - 3)).trimEnd()}...`;
+}
+
+export function permittedSearchDomains(
+  principal: Principal,
+  requested?: readonly SearchDomain[],
+): SearchDomain[] {
+  const allowedByRole =
+    principal.role === 'owner'
+      ? [...searchDomains]
+      : searchDomains.filter((domain) =>
+          principal.permissions.includes(`${DOMAIN_MODULE_MAP[domain]}:read`),
+        );
+  if (!requested) return allowedByRole;
+  const requestedSet = new Set(requested);
+  return allowedByRole.filter((domain) => requestedSet.has(domain));
+}
+
+export function computeScopedCandidateDigest(candidates: readonly ScopedPacketCandidate[]): string {
+  const normalized = candidates
+    .map((candidate) => ({
+      id: candidate.id,
+      type: candidate.type,
+      revision: candidate.revision,
+    }))
+    .sort(
+      (a, b) => a.id.localeCompare(b.id) || a.type.localeCompare(b.type) || a.revision - b.revision,
+    );
+  return digest(canonical(normalized));
+}
 export async function contentOperation(
   c: PoolClient,
   p: Principal,
@@ -296,23 +403,133 @@ export async function contentOperation(
       )
     ).rows;
   }
+  if (name === 'context.search') {
+    const a = operations[name].input.parse(input);
+    const allowedDomains = permittedSearchDomains(p, a.domains);
+    if (!allowedDomains.length) {
+      return { query: a.query, matchMode: 'fts', items: [] } satisfies ContextSearchResult;
+    }
+    interface SearchRow {
+      entity_id: string;
+      domain: SearchDomain;
+      entity_type: string;
+      project_id: string | null;
+      title: string;
+      body: string;
+      updated_at: Date | string;
+      deleted_at: Date | string | null;
+      score: number;
+    }
+    const runSearch = async (queryExpr: string, queryText: string): Promise<SearchRow[]> =>
+      (
+        await c.query<SearchRow>(
+          `WITH q AS (
+             SELECT ${queryExpr} AS query
+           )
+           SELECT
+             idx.entity_id,
+             idx.domain,
+             idx.entity_type,
+             idx.project_id,
+             idx.title,
+             idx.body,
+             idx.updated_at,
+             e.deleted_at,
+             (
+               ts_rank_cd(idx.search_vector, q.query)
+               * (1.0 / (1.0 + GREATEST(EXTRACT(EPOCH FROM (now() - idx.updated_at)) / 86400.0, 0.0) / ${RECENCY_DECAY_HALF_LIFE_DAYS}.0))
+             )::double precision AS score
+           FROM context.index idx
+           CROSS JOIN q
+           JOIN foundation.entities e ON e.id = idx.entity_id
+           JOIN foundation.entity_types et ON et.type = e.type
+           JOIN foundation.modules m ON m.id = et.module
+           WHERE m.enabled
+             AND ($4::boolean OR e.deleted_at IS NULL)
+             AND idx.domain = ANY($2::text[])
+             AND ($3::uuid IS NULL OR idx.project_id = $3::uuid)
+             AND idx.search_vector @@ q.query
+           ORDER BY score DESC, idx.updated_at DESC, idx.entity_id ASC
+           LIMIT $5`,
+          [queryText, allowedDomains, a.projectId ?? null, a.includeDeleted, a.limit],
+        )
+      ).rows;
+    const formatRow = (row: SearchRow): ContextSearchItem => ({
+      entityId: row.entity_id,
+      domain: row.domain,
+      entityType: row.entity_type,
+      projectId: row.project_id,
+      title: row.title,
+      snippet: makeSearchSnippet(row.body),
+      score: Number(row.score),
+      updatedAt:
+        row.updated_at instanceof Date ? row.updated_at.toISOString() : String(row.updated_at),
+      deletedAt:
+        row.deleted_at === null
+          ? null
+          : row.deleted_at instanceof Date
+            ? row.deleted_at.toISOString()
+            : String(row.deleted_at),
+    });
+    let matchMode: 'fts' | 'prefix_fallback' = 'fts';
+    let rows = await runSearch("websearch_to_tsquery('english', $1)", a.query);
+    if (!rows.length) {
+      const prefixQuery = buildPrefixTsQuery(a.query);
+      if (prefixQuery) {
+        const fallbackRows = await runSearch("to_tsquery('english', $1)", prefixQuery);
+        if (fallbackRows.length) {
+          rows = fallbackRows;
+          matchMode = 'prefix_fallback';
+        }
+      }
+    }
+    return {
+      query: a.query,
+      matchMode,
+      items: rows.map(formatRow),
+    } satisfies ContextSearchResult;
+  }
   if (name === 'context.packet') {
     const a = operations[name].input.parse(input);
     const items: unknown[] = [];
-    const omissions: unknown[] = [];
+    const omissions: PacketOmission[] = [];
+    const scopedCandidates: ScopedPacketCandidate[] = [];
     let remaining = a.maxChars;
     for (const id of [...new Set(a.noteIds)]) {
       const n = (
-        await c.query(
-          'SELECT id,title,body,source,revision FROM context.notes WHERE id=$1 AND id IN (SELECT id FROM foundation.entities WHERE deleted_at IS NULL)',
+        await c.query<{
+          id: string;
+          title: string;
+          body: string;
+          source: string | null;
+          revision: number;
+          deleted_at: Date | string | null;
+        }>(
+          'SELECT n.id,n.title,n.body,n.source,n.revision,e.deleted_at FROM context.notes n JOIN foundation.entities e USING(id) WHERE n.id=$1',
           [id],
         )
       ).rows[0];
       // Do not reveal whether an inaccessible ID exists or include metadata about it.
-      if (!n) fail(404, 'not_found', 'A requested source is unavailable');
+      if (!n) {
+        if (!a.omitUnavailable) fail(404, 'not_found', 'A requested source is unavailable');
+        omissions.push({ id, omissionType: 'not_found', reason: 'not_found' });
+        continue;
+      }
+      if (n.deleted_at !== null) {
+        if (!a.omitUnavailable) fail(404, 'not_found', 'A requested source is unavailable');
+        omissions.push({ id, omissionType: 'deleted', reason: 'deleted' });
+        continue;
+      }
+      scopedCandidates.push({ id: n.id, type: 'context.note', revision: n.revision });
       const rendered = `${n.title}\n${n.body}`;
       if (rendered.length > remaining) {
-        omissions.push({ id, reason: 'character_budget' });
+        omissions.push({
+          id,
+          omissionType: 'budget_exceeded',
+          reason: 'character_budget',
+          requiredChars: rendered.length,
+          remainingChars: remaining,
+        });
         continue;
       }
       remaining -= rendered.length;
@@ -324,11 +541,13 @@ export async function contentOperation(
         sha256: digest(rendered),
       });
     }
+    const scopedCandidateDigest = computeScopedCandidateDigest(scopedCandidates);
     const manifest = {
       version: 1,
       unit: 'characters',
       budget: a.maxChars,
       used: a.maxChars - remaining,
+      scopedCandidateDigest,
       items,
       omissions,
     };
