@@ -153,6 +153,7 @@ test('toolAnnotations derives accurate MCP hints for every contract operation', 
     if (ann.destructiveHint) destructiveOps.add(name);
   }
   assert.deepEqual([...destructiveOps].sort(), [
+    'memory.delete',
     'notes.delete',
     'objects.delete',
     'projects.delete',

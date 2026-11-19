@@ -3207,6 +3207,484 @@ test('standalone headless acceptance on real PostgreSQL and subprocess clients',
         'cancelled',
       );
     });
+    await t.test(
+      'optional embedding-free memory module enforces lifecycle, guardrails, dedup, FTS/path ranking, real git/hash staleness, RLS, and backup/restore',
+      async () => {
+        const { rm, unlink } = await import('node:fs/promises');
+        const { join } = await import('node:path');
+        const { inspectCodeMemoryPaths } = await import('../../packages/client/dist/index.js');
+
+        const memFixture = await fixture('code_memory', ['projects', 'memory']);
+        const db = new Pool({ connectionString: memFixture.adminUrl });
+        const repoDir = resolve(memFixture.dir, 'sample-repo');
+        let hasGit = false;
+        try {
+          await exec('git', ['--version'], { env: { PATH: process.env.PATH } });
+          hasGit = true;
+        } catch {
+          hasGit = false;
+        }
+        const runGit = async (...args) => {
+          const { stdout } = await exec('git', args, {
+            cwd: repoDir,
+            env: {
+              PATH: process.env.PATH,
+              GIT_AUTHOR_NAME: 'Siftable Acceptance',
+              GIT_AUTHOR_EMAIL: 'acceptance@siftable.local',
+              GIT_COMMITTER_NAME: 'Siftable Acceptance',
+              GIT_COMMITTER_EMAIL: 'acceptance@siftable.local',
+              GIT_TERMINAL_PROMPT: '0',
+            },
+          });
+          return stdout.trim();
+        };
+
+        try {
+          // Physical independence: only foundation, memory, projects schemas exist (zero pgvector / code_chunks).
+          const schemas = (
+            await db.query(
+              "SELECT schema_name FROM information_schema.schemata WHERE schema_name IN ('foundation','projects','context','work','planning','extensions','memory') ORDER BY schema_name",
+            )
+          ).rows.map((r) => r.schema_name);
+          assert.deepEqual(schemas, ['foundation', 'memory', 'projects']);
+          assert.equal(
+            (await db.query("SELECT 1 FROM pg_extension WHERE extname='vector'")).rowCount,
+            0,
+          );
+
+          const project = await invoke(memFixture.owner, 'projects.create', {
+            title: 'Code Memory Acceptance Project',
+            instructions: 'Track durable codebase facts without embeddings',
+          });
+          const memAgent = await agent(memFixture, 'mem_agent', [
+            'projects:read',
+            'memory:read',
+            'memory:write',
+          ]);
+          const isolatedScopeAgent = await agent(
+            memFixture,
+            'mem_other_scope',
+            ['projects:read', 'memory:read', 'memory:write'],
+            { scopeId: randomUUID() },
+          );
+
+          // Set up real local files (and git repo when git is present in the runtime image).
+          await mkdir(join(repoDir, 'packages', 'core', 'src'), { recursive: true });
+          await mkdir(join(repoDir, 'packages', 'client', 'src'), { recursive: true });
+          await mkdir(join(repoDir, 'apps', 'server', 'src'), { recursive: true });
+
+          const policyRel = 'packages/core/src/secretPolicy.ts';
+          const memoryRel = 'packages/core/src/memory.ts';
+          const clientRel = 'packages/client/src/index.ts';
+          const serverRel = 'apps/server/src/index.ts';
+
+          await writeFile(join(repoDir, policyRel), 'export const policyRule = 1;\n');
+          await writeFile(join(repoDir, memoryRel), 'export const memoryRule = 1;\n');
+          await writeFile(join(repoDir, clientRel), 'export const clientRule = 1;\n');
+          await writeFile(join(repoDir, serverRel), 'export const serverRule = 1;\n');
+
+          const fallbackCommit1 = '1111111111111111111111111111111111111111';
+          const fallbackCommit2 = '2222222222222222222222222222222222222222';
+          if (hasGit) {
+            await runGit('init', '-b', 'main');
+            await runGit('add', '.');
+            await runGit('commit', '-m', 'initial codebase state');
+          }
+
+          const baseline = await inspectCodeMemoryPaths(repoDir, [
+            policyRel,
+            memoryRel,
+            clientRel,
+            serverRel,
+          ]);
+          const commit1 = baseline.headCommit ?? fallbackCommit1;
+          assert.ok(baseline.fileHashes[policyRel]);
+          assert.ok(baseline.fileHashes[memoryRel]);
+          assert.ok(baseline.fileHashes[clientRel]);
+
+          // 1. Guardrails: agent provenance required, raw code dumps & secrets refused.
+          await reject(
+            () =>
+              invoke(memAgent.client, 'memory.store', {
+                projectId: project.id,
+                title: 'Missing provenance',
+                summary: 'Agent stores must fail without paths and sourceCommit.',
+                kind: 'invariant',
+              }),
+            'provenance_required',
+          );
+          await reject(
+            () =>
+              invoke(memAgent.client, 'memory.store', {
+                projectId: project.id,
+                title: 'Bad commit sha',
+                summary: 'Invalid commit sha must fail closed.',
+                kind: 'invariant',
+                paths: [memoryRel],
+                sourceCommit: 'not-hex',
+              }),
+            'provenance_required',
+          );
+          await reject(
+            () =>
+              invoke(memAgent.client, 'memory.store', {
+                projectId: project.id,
+                title: 'Fenced code paste',
+                summary: 'Do not store raw code:\n```ts\nexport const x = 1;\n```',
+                kind: 'gotcha',
+                paths: [memoryRel],
+                sourceCommit: commit1,
+              }),
+            'raw_code_dump',
+          );
+          await reject(
+            () =>
+              invoke(memAgent.client, 'memory.store', {
+                projectId: project.id,
+                title: 'Leaked token',
+                summary: 'Never commit ghp_abcdefghijklmnopqrstuvwxyz123456 in code memory.',
+                kind: 'gotcha',
+                paths: [policyRel],
+                sourceCommit: commit1,
+              }),
+            'secret_detected',
+          );
+
+          // 2. Agent default status = unreviewed; owner default status = confirmed.
+          // Also verifies path-keyed fileHashes with 'secretPolicy.ts' do NOT false-positive.
+          const agentFact = await invoke(memAgent.client, 'memory.store', {
+            projectId: project.id,
+            title: 'Transaction boundary isolates tenant state',
+            summary:
+              'Transaction isolation sets app.owner_id and app.scope_id locally before executing queries.',
+            kind: 'invariant',
+            paths: [policyRel],
+            symbols: ['findInlineAgentWorkSecret'],
+            sourceCommit: commit1,
+            fileHashes: { [policyRel]: baseline.fileHashes[policyRel] },
+          });
+          assert.equal(agentFact.status, 'unreviewed');
+          assert.equal(agentFact.deduplicated, false);
+
+          // 3. Normalized fact_hash deduplication returns existing active entry.
+          const deduped = await invoke(memAgent.client, 'memory.store', {
+            projectId: project.id,
+            title: '  TRANSACTION   BOUNDARY isolates tenant state ',
+            summary:
+              'transaction isolation sets   app.owner_id and app.scope_id locally before executing queries.',
+            kind: 'invariant',
+            paths: [`./${policyRel}`],
+            sourceCommit: commit1,
+          });
+          assert.equal(deduped.deduplicated, true);
+          assert.equal(deduped.id, agentFact.id);
+
+          // 4. Operator-only memory.review: agent forbidden, owner confirms/rejects.
+          await reject(
+            () =>
+              invoke(memAgent.client, 'memory.review', {
+                id: agentFact.id,
+                revision: agentFact.revision,
+                decision: 'confirmed',
+                note: 'Agent cannot self-confirm',
+              }),
+            'forbidden',
+          );
+
+          const confirmedAgentFact = await invoke(memFixture.owner, 'memory.review', {
+            id: agentFact.id,
+            revision: agentFact.revision,
+            decision: 'confirmed',
+            note: 'Verified against database.ts',
+          });
+          assert.equal(confirmedAgentFact.status, 'confirmed');
+          assert.equal(confirmedAgentFact.revision, 2);
+
+          // Owner store defaults to confirmed.
+          const exactPathConfirmed = await invoke(memFixture.owner, 'memory.store', {
+            projectId: project.id,
+            title: 'Ledger checkpoint invariant',
+            summary:
+              'Ledger checkpoint commits append-only events atomically inside the transaction.',
+            kind: 'architecture',
+            paths: [memoryRel],
+            sourceCommit: commit1,
+            fileHashes: { [memoryRel]: baseline.fileHashes[memoryRel] },
+          });
+          assert.equal(exactPathConfirmed.status, 'confirmed');
+
+          const sameDirConfirmed = await invoke(memFixture.owner, 'memory.store', {
+            projectId: project.id,
+            title: 'Ledger checkpoint policy check',
+            summary:
+              'Ledger checkpoint commits append-only events atomically inside the transaction.',
+            kind: 'architecture',
+            paths: [policyRel],
+            sourceCommit: commit1,
+          });
+          const sharedParentConfirmed = await invoke(memFixture.owner, 'memory.store', {
+            projectId: project.id,
+            title: 'Ledger checkpoint client check',
+            summary:
+              'Ledger checkpoint commits append-only events atomically inside the transaction.',
+            kind: 'architecture',
+            paths: [clientRel],
+            sourceCommit: commit1,
+            fileHashes: { [clientRel]: baseline.fileHashes[clientRel] },
+          });
+          const unrelatedConfirmed = await invoke(memFixture.owner, 'memory.store', {
+            projectId: project.id,
+            title: 'Ledger checkpoint server check',
+            summary:
+              'Ledger checkpoint commits append-only events atomically inside the transaction.',
+            kind: 'architecture',
+            paths: [serverRel],
+            sourceCommit: commit1,
+          });
+
+          // Lifecycle ranking: unreviewed & needs_review & rejected entries for same query term.
+          const unreviewedSearchFact = await invoke(memAgent.client, 'memory.store', {
+            projectId: project.id,
+            title: 'Ledger checkpoint draft note',
+            summary:
+              'Ledger checkpoint commits append-only events atomically inside the transaction.',
+            kind: 'decision',
+            paths: [memoryRel],
+            sourceCommit: commit1,
+          });
+          const rejectedFact = await invoke(memAgent.client, 'memory.store', {
+            projectId: project.id,
+            title: 'Ledger checkpoint rejected claim',
+            summary:
+              'Ledger checkpoint commits append-only events atomically inside the transaction.',
+            kind: 'gotcha',
+            paths: [memoryRel],
+            sourceCommit: commit1,
+          });
+          await invoke(memFixture.owner, 'memory.review', {
+            id: rejectedFact.id,
+            revision: rejectedFact.revision,
+            decision: 'rejected',
+            note: 'Supplanted by cleaner invariant',
+          });
+
+          // 5. Supersede lineage: old transitions atomically to superseded with superseded_by + event.
+          const supersededReplacement = await invoke(memFixture.owner, 'memory.store', {
+            projectId: project.id,
+            title: 'Ledger checkpoint v2 invariant',
+            summary:
+              'Ledger checkpoint v2 commits append-only events atomically inside the transaction.',
+            kind: 'architecture',
+            paths: [memoryRel],
+            sourceCommit: commit1,
+            fileHashes: { [memoryRel]: baseline.fileHashes[memoryRel] },
+            supersedesId: exactPathConfirmed.id,
+          });
+          assert.equal(supersededReplacement.status, 'confirmed');
+          const oldEntry = await invoke(memFixture.owner, 'memory.get', {
+            id: exactPathConfirmed.id,
+          });
+          assert.equal(oldEntry.status, 'superseded');
+          assert.equal(oldEntry.supersededBy, supersededReplacement.id);
+          assert.equal(oldEntry.revision, 2);
+          assert.equal(oldEntry.eventCount, 2);
+          const oldEvents = await invoke(memFixture.owner, 'memory.events', {
+            id: exactPathConfirmed.id,
+          });
+          assert.deepEqual(
+            oldEvents.map((e) => e.event),
+            ['memory.stored', 'memory.superseded'],
+          );
+          assert.equal(oldEvents[1].detail.supersededBy, supersededReplacement.id);
+
+          // 6. FTS + path-proximity + lifecycle ranking (excludes rejected & superseded by default).
+          const searchResult = await invoke(memFixture.owner, 'memory.search', {
+            query: 'ledger checkpoint',
+            projectId: project.id,
+            paths: [memoryRel],
+          });
+          assert.equal(searchResult.matchMode, 'fts');
+          const resultIds = searchResult.items.map((item) => item.id);
+          assert.equal(resultIds.includes(rejectedFact.id), false);
+          assert.equal(resultIds.includes(exactPathConfirmed.id), false);
+          // Confirmed exact path beats unreviewed exact path and beats same-dir/shared-parent/unrelated
+          assert.equal(searchResult.items[0].id, supersededReplacement.id);
+          assert.ok(
+            resultIds.indexOf(supersededReplacement.id) <
+              resultIds.indexOf(unreviewedSearchFact.id),
+          );
+          assert.ok(
+            resultIds.indexOf(sameDirConfirmed.id) < resultIds.indexOf(sharedParentConfirmed.id),
+          );
+          assert.ok(
+            resultIds.indexOf(sharedParentConfirmed.id) < resultIds.indexOf(unrelatedConfirmed.id),
+          );
+
+          // Prefix fallback works for partial token queries.
+          const prefixResult = await invoke(memFixture.owner, 'memory.search', {
+            query: 'checkpoi',
+            projectId: project.id,
+          });
+          assert.equal(prefixResult.matchMode, 'prefix_fallback');
+          assert.ok(prefixResult.items.length >= 1);
+
+          // memory.list filters by pathPrefix, kind, and status.
+          const coreList = await invoke(memFixture.owner, 'memory.list', {
+            projectId: project.id,
+            pathPrefix: 'packages/core/src',
+            status: 'confirmed',
+          });
+          assert.ok(coreList.some((m) => m.id === supersededReplacement.id));
+          assert.equal(
+            coreList.some((m) => m.id === sharedParentConfirmed.id),
+            false,
+          );
+
+          // Manual mark_needs_review transition + audit event.
+          const markedManual = await invoke(memAgent.client, 'memory.mark_needs_review', {
+            id: unrelatedConfirmed.id,
+            revision: unrelatedConfirmed.revision,
+            reason: 'Server bootstrap refactored',
+          });
+          assert.equal(markedManual.status, 'needs_review');
+
+          // 7. Real git commit + file-hash staleness detection (dryRun + live mutation).
+          await writeFile(join(repoDir, memoryRel), 'export const memoryRule = 2;\n');
+          if (hasGit) {
+            await runGit('add', memoryRel);
+            await runGit('commit', '-m', 'modify memory.ts');
+          }
+          await unlink(join(repoDir, clientRel));
+
+          const drifted = await inspectCodeMemoryPaths(repoDir, [
+            policyRel,
+            memoryRel,
+            clientRel,
+            serverRel,
+          ]);
+          const observedPathCommits = hasGit
+            ? drifted.pathCommits
+            : {
+                [policyRel]: commit1,
+                [memoryRel]: fallbackCommit2,
+                [clientRel]: commit1,
+                [serverRel]: commit1,
+              };
+          const dryRunStale = await invoke(memFixture.owner, 'memory.detect_stale', {
+            projectId: project.id,
+            pathCommits: observedPathCommits,
+            fileHashes: drifted.fileHashes,
+            reason: 'Post-commit staleness scan',
+            dryRun: true,
+          });
+          assert.equal(dryRunStale.dryRun, true);
+          assert.ok(dryRunStale.staleCount >= 3);
+          assert.equal(
+            (await invoke(memFixture.owner, 'memory.get', { id: supersededReplacement.id })).status,
+            'confirmed',
+          );
+
+          const appliedStale = await invoke(memFixture.owner, 'memory.detect_stale', {
+            projectId: project.id,
+            pathCommits: observedPathCommits,
+            fileHashes: drifted.fileHashes,
+            reason: 'Post-commit staleness scan',
+            dryRun: false,
+          });
+          assert.equal(appliedStale.dryRun, false);
+          assert.equal(appliedStale.staleCount, dryRunStale.staleCount);
+
+          const staleMemoryItem = appliedStale.stale.find((s) => s.id === supersededReplacement.id);
+          assert.ok(staleMemoryItem);
+          assert.equal(staleMemoryItem.previousStatus, 'confirmed');
+          assert.equal(staleMemoryItem.newStatus, 'needs_review');
+          assert.deepEqual(staleMemoryItem.changedPaths, [memoryRel]);
+
+          const staleDeletedItem = appliedStale.stale.find(
+            (s) => s.id === sharedParentConfirmed.id,
+          );
+          assert.ok(staleDeletedItem);
+          assert.deepEqual(staleDeletedItem.changedPaths, [clientRel]);
+          assert.ok(staleDeletedItem.reasons.includes(`file_deleted:${clientRel}`));
+
+          // Unchanged policyRel entry remains confirmed.
+          assert.equal(
+            (await invoke(memFixture.owner, 'memory.get', { id: confirmedAgentFact.id })).status,
+            'confirmed',
+          );
+
+          // 8. Immutable memory.events enforced by foundation.immutable() trigger.
+          await assert.rejects(
+            () =>
+              db.query("UPDATE memory.events SET event='tampered' WHERE memory_id=$1", [
+                supersededReplacement.id,
+              ]),
+            (err) => err.code === '23514' && /append_only/.test(err.message),
+          );
+          await assert.rejects(
+            () =>
+              db.query('DELETE FROM memory.events WHERE memory_id=$1', [supersededReplacement.id]),
+            (err) => err.code === '23514' && /append_only/.test(err.message),
+          );
+
+          // 9. RLS scope isolation: different scope sees zero entries.
+          await reject(
+            () => invoke(isolatedScopeAgent.client, 'memory.get', { id: confirmedAgentFact.id }),
+            'not_found',
+          );
+          await reject(
+            () => invoke(isolatedScopeAgent.client, 'memory.events', { id: confirmedAgentFact.id }),
+            'not_found',
+          );
+          assert.deepEqual(await invoke(isolatedScopeAgent.client, 'memory.list', {}), []);
+          assert.deepEqual(
+            (
+              await invoke(isolatedScopeAgent.client, 'memory.search', {
+                query: 'ledger checkpoint',
+              })
+            ).items,
+            [],
+          );
+
+          // 10. Soft-delete via foundation.entities.deleted_at + revision bump + event.
+          const deleted = await invoke(memFixture.owner, 'memory.delete', {
+            id: confirmedAgentFact.id,
+            revision: confirmedAgentFact.revision,
+            reason: 'Retiring verified test entry',
+          });
+          assert.equal(deleted.deleted, true);
+          assert.equal(deleted.revision, confirmedAgentFact.revision + 1);
+          await reject(
+            () => invoke(memFixture.owner, 'memory.get', { id: confirmedAgentFact.id }),
+            'not_found',
+          );
+          const deletedIncluded = await invoke(memFixture.owner, 'memory.get', {
+            id: confirmedAgentFact.id,
+            includeDeleted: true,
+          });
+          assert.ok(deletedIncluded.deletedAt);
+
+          // 11. Native backup, verify, and restore of projects+memory database.
+          const backupDir = resolve(base, 'code-memory-backup');
+          const backedUp = await cli(['backup', '--output', backupDir], memFixture.adminUrl);
+          assert.deepEqual(backedUp.modules.sort(), ['foundation', 'memory', 'projects']);
+          const verified = await cli(['backup-verify', '--file', backupDir]);
+          assert.equal(verified.verified, true);
+          const restoredDb = `sift_code_memory_restored_${runId}`;
+          const restored = await cli(
+            ['restore', '--file', backupDir, '--database', restoredDb],
+            adminBase,
+          );
+          fixtures.push({ db: restoredDb });
+          assert.equal(restored.integrity, 'verified');
+          assert.deepEqual(restored.modules.sort(), ['foundation', 'memory', 'projects']);
+        } finally {
+          await rm(repoDir, { recursive: true, force: true }).catch(() => {});
+          await db.end();
+          await stop(memFixture);
+        }
+      },
+    );
   } finally {
     for (const f of fixtures) await stop(f);
     const admin = new Pool({ connectionString: adminBase });

@@ -6,9 +6,29 @@ export const moduleIds = [
   'work',
   'planning',
   'extensions',
+  'memory',
 ] as const;
 export type ModuleId = (typeof moduleIds)[number];
 export const moduleSchema = z.enum(moduleIds);
+export const memoryKinds = [
+  'invariant',
+  'architecture',
+  'decision',
+  'gotcha',
+  'convention',
+  'interface',
+] as const;
+export type MemoryKind = (typeof memoryKinds)[number];
+export const memoryKindSchema = z.enum(memoryKinds);
+export const memoryStatuses = [
+  'unreviewed',
+  'confirmed',
+  'needs_review',
+  'rejected',
+  'superseded',
+] as const;
+export type MemoryStatus = (typeof memoryStatuses)[number];
+export const memoryStatusSchema = z.enum(memoryStatuses);
 export const searchDomains = ['note', 'task', 'project', 'object'] as const;
 export type SearchDomain = (typeof searchDomains)[number];
 export const searchDomainSchema = z.enum(searchDomains);
@@ -456,6 +476,114 @@ export const operations = {
     z.object({ type: key, source: ref, target: ref }).strict(),
   ),
   'relations.list': op('extensions', false, false, z.object({ id, ...page }).strict()),
+  'memory.store': op(
+    'memory',
+    true,
+    false,
+    z
+      .object({
+        projectId: id,
+        title,
+        summary: z.string().trim().min(1).max(4000),
+        kind: memoryKindSchema,
+        paths: z.array(z.string().trim().min(1).max(1024)).max(50).default([]),
+        symbols: z.array(z.string().trim().min(1).max(256)).max(50).default([]),
+        sourceCommit: z.string().trim().min(1).max(128).optional(),
+        fileHashes: z
+          .record(z.string().trim().min(1).max(1024), z.string().regex(/^[0-9a-f]{64}$/i))
+          .default({}),
+        supersedesId: id.optional(),
+      })
+      .strict(),
+  ),
+  'memory.get': op(
+    'memory',
+    false,
+    false,
+    z
+      .object({
+        id,
+        includeDeleted: z.boolean().default(false),
+        includeEventCount: z.boolean().default(true),
+      })
+      .strict(),
+  ),
+  'memory.list': op(
+    'memory',
+    false,
+    false,
+    z
+      .object({
+        ...page,
+        projectId: id.optional(),
+        status: memoryStatusSchema.optional(),
+        kind: memoryKindSchema.optional(),
+        pathPrefix: z.string().trim().min(1).max(1024).optional(),
+        includeDeleted: z.boolean().default(false),
+      })
+      .strict(),
+  ),
+  'memory.search': op(
+    'memory',
+    false,
+    false,
+    z
+      .object({
+        query: z.string().trim().min(1).max(500),
+        projectId: id.optional(),
+        paths: z.array(z.string().trim().min(1).max(1024)).max(50).optional(),
+        kind: memoryKindSchema.optional(),
+        statuses: z.array(memoryStatusSchema).min(1).max(5).optional(),
+        limit: z.number().int().min(1).max(50).default(20),
+        includeDeleted: z.boolean().default(false),
+      })
+      .strict(),
+  ),
+  'memory.events': op('memory', false, false, z.object({ id, ...page }).strict()),
+  'memory.mark_needs_review': op(
+    'memory',
+    true,
+    false,
+    z.object({ id, revision, reason: title }).strict(),
+  ),
+  'memory.review': op(
+    'memory',
+    true,
+    true,
+    z
+      .object({
+        id,
+        revision,
+        decision: z.enum(['confirmed', 'rejected']),
+        note: text.default(''),
+      })
+      .strict(),
+  ),
+  'memory.detect_stale': op(
+    'memory',
+    true,
+    false,
+    z
+      .object({
+        projectId: id,
+        pathCommits: z
+          .record(z.string().trim().min(1).max(1024), z.string().trim().min(1).max(128).nullable())
+          .optional(),
+        fileHashes: z
+          .record(
+            z.string().trim().min(1).max(1024),
+            z
+              .string()
+              .regex(/^[0-9a-f]{64}$/i)
+              .nullable(),
+          )
+          .optional(),
+        reason: title.optional(),
+        dryRun: z.boolean().default(false),
+      })
+      .strict(),
+  ),
+  'memory.delete': op('memory', true, false, remove),
 } as const;
 export type Operation = keyof typeof operations;
 export type OperationInput<K extends Operation> = z.input<(typeof operations)[K]['input']>;

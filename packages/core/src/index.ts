@@ -16,6 +16,7 @@ import { contentOperation } from './content.js';
 import { extensionOperation } from './extensions.js';
 import { notifyDomainEvent } from './events.js';
 import { linksGraph } from './linksGraph.js';
+import { memoryOperation } from './memory.js';
 export * from './database.js';
 export * from './backup.js';
 export {
@@ -38,6 +39,23 @@ export {
   type RawLinkRecord,
 } from './linksGraph.js';
 export { emptyTaskWorkSummary, summarizeTaskWork, type TaskWorkSummary } from './content.js';
+export {
+  computeFactHash,
+  DEFAULT_MEMORY_SEARCH_STATUSES,
+  evaluateMemoryStaleness,
+  isValidSourceCommit,
+  LIFECYCLE_BOOST,
+  lifecycleBoost,
+  looksLikeRawCodeDump,
+  normalizeMemoryPath,
+  pathProximityBoost,
+  type DetectStaleResult,
+  type MemoryEntryRecord,
+  type MemoryEventRecord,
+  type MemorySearchItem,
+  type MemorySearchResult,
+  type StaleMemoryEntry,
+} from './memory.js';
 export { deriveVerificationCoverage } from './verificationCoverage.js';
 export type { VerificationCoverage, VerificationStep } from './verificationTypes.js';
 export {
@@ -184,10 +202,19 @@ export async function execute(
   const args = contract.input.parse(input);
   const scrub = { ...args } as Record<string, unknown>;
   delete scrub.claimSecret;
+  if (contract.module === 'memory') {
+    // Path-keyed maps (e.g. packages/core/src/secretPolicy.ts) should scan values/strings, not treat file paths as secret property names.
+    if (scrub.fileHashes && typeof scrub.fileHashes === 'object') {
+      scrub.fileHashes = Object.entries(scrub.fileHashes as Record<string, unknown>);
+    }
+    if (scrub.pathCommits && typeof scrub.pathCommits === 'object') {
+      scrub.pathCommits = Object.entries(scrub.pathCommits as Record<string, unknown>);
+    }
+  }
   if (findInlineAgentWorkSecret(scrub))
     fail(
       400,
-      'inline_secret',
+      contract.module === 'memory' ? 'secret_detected' : 'inline_secret',
       'Input appears to contain credential material; use a reference instead',
     );
   if (contract.write && (!idempotencyKey || !idempotencyKey.trim() || idempotencyKey.length > 128))
@@ -229,7 +256,9 @@ export async function execute(
           ? await workOperation(c, p, operation, args)
           : contract.module === 'extensions'
             ? await extensionOperation(c, p, operation, args)
-            : await contentOperation(c, p, operation, args);
+            : contract.module === 'memory'
+              ? await memoryOperation(c, p, operation, args)
+              : await contentOperation(c, p, operation, args);
     if (contract.write) {
       await c.query(
         'INSERT INTO foundation.receipts(principal_id,owner_id,scope_id,operation,key,fingerprint,result) VALUES($1,$2,$3,$4,$5,$6,$7)',
