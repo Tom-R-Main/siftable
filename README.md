@@ -1,168 +1,117 @@
 # Siftable
 
-A local, headless service for project context and accountable agent work. Use the CLI or MCP to share notes, assign work, recover interrupted claims, and preserve verification evidence across sessions.
+Siftable is a local, PostgreSQL-backed context and work-graph service for accountable coding agents. It pairs a headless HTTP API, CLI, and stdio MCP server with a local dependency-DAG UI so agents share durable notes, claim bounded tasks, and submit evidence while human operators retain final acceptance—with no cloud accounts, browser logins, or model keys.
 
-This is a local extraction with a tested core lifecycle and recovery path, not the full former hosted product. Everything runs locally. No Siftable account, browser login, model key or cloud service is required. Nothing in this repository has been published by this extraction.
+[Quickstart](#quickstart) · [How it works](#how-it-works) · [Graph UI & Antigravity](#graph-ui--antigravity) · [Modules](#modules) · [MCP](#mcp) · [Backup](#backup-and-validation) · [Docs](#docs)
 
-## Start locally
+## What you get
 
-Start in the repository root of a source checkout or extracted source archive. No global `sift` installation, `.env`, existing database or private configuration is needed.
+- **Dependency-ordered work DAGs**: Inspect ready frontiers and transitive unblocks with `work.graph`, or split a task into 1–25 gated child branches atomically with `work.fork`.
+- **Attempt-scoped leases and idempotency**: Every claim creates an epoch-tracked lease secret under `.local/`, and every mutation requires a stable request key for safe retries.
+- **Evidence separated from acceptance**: Agents submit `work.evidence` and request `work.review`, while `work.accept` and other operator actions require `.local/owner.json`.
+- **Versioned context and custom schemas**: Store notes with revision history, immutable context packets, and custom object/relation schemas validated against a bounded JSON Schema subset.
+- **Verified PostgreSQL 17 snapshots**: `admin backup`, `backup-verify`, and `restore` produce `pg_dump` custom archives with per-table SHA-256 manifests and restore only into a fresh database.
 
-Prerequisites: Node.js 22 or newer (including npm), Docker Engine running, and the Docker Compose v2+ plugin. Your normal OS user must be able to run Docker without `sudo` (Docker Desktop provides this on macOS; Linux needs configured Docker access). Run the following checks as that user. Node 22.23.3 is the tested container runtime. Builds need network access to obtain dependencies/images; ordinary operation does not call external services.
+## How it works
 
-```sh
-node --version
-npm --version
-docker info
-docker compose version
+Choose the workflow that fits what you are doing:
+
+| Workflow | Best for | Entry point |
+|---|---|---|
+| Verify end-to-end locally | Confirming setup, CLI, stdio MCP, and non-self-acceptance | `npm run example:first-work` |
+| CLI | Scripted setup, inspection, and owner operations | `npm run sift -- <op> --config .local/owner.json` |
+| Stdio MCP + Antigravity | Scoped agent execution with `siftable-dag` and sidecar | `npm run plugin:install` + `packages/mcp/dist/index.js` |
+| Local Graph UI | Reviewing the DAG, `Next` queue, forks, and handbacks | `npm run ui` (`http://127.0.0.1:7041`) |
+
+Owner credentials (`.local/owner.json`) control instance administration, work creation, and human acceptance. Agent credentials (`.local/worker.json`) are scoped to reading context, holding claims, and submitting evidence for review:
+
+```mermaid
+flowchart LR
+  Owner["Owner CLI or Graph UI (.local/owner.json)"] -->|create, fork, accept, requeue| API["Siftable API (:8088)"]
+  Agent["Agent CLI or Stdio MCP (.local/worker.json)"] -->|claim, evidence, review| API
+  API --> DB[("PostgreSQL 17 (siftable-headless)")]
+  Agent -.->|attempt leases| Leases[".local/leases/"]
 ```
 
-Use a writable checkout and an available loopback port 8088. Run setup without `sudo`:
+```text
+work.create -> work.claim -> work.start -> work.evidence -> work.review -> owner: work.accept
+                    |
+                    +-> work.fork (splits into 1-25 gated child branches; parent waits)
+```
+
+## Quickstart
+
+Prerequisites: **Node.js >= 22** (with `npm`; `22.23.3` is the tested container runtime), a running **Docker Engine**, and the **Docker Compose v2+** plugin accessible without `sudo`.
+
+Run setup from the repository root without `sudo`:
 
 ```sh
 npm ci
 npm run build
 npm run local
-```
-
-The server listens at `http://127.0.0.1:8088`. Bootstrap creates random database passwords and an owner credential in protected, ignored `.local/` files. It never prints them. The database is accessible only on the private Docker network. The server has a second network for loopback port publishing; this Compose configuration is not an outbound firewall.
-
-Compose administration runs as the owner of the mounted `.local/` directory so credentials and backups remain readable by the host user while retaining private permissions. Keep this directory private. Do not share credential files or paste their contents into a terminal. `config.info` below prints only identity IDs.
-
-For another port, set `export SIFT_PORT=18088` **before the first setup**, and retain that value in shells running Compose, credential creation and examples. Changing it later does not rewrite existing credential URLs. Compose uses the fixed project name `siftable-headless`; use one installation per Docker daemon. A second checkout on the same daemon is not an isolated installation.
-
-Start with only the modules you want on a fresh installation:
-
-```sh
-npm run local -- context
-# or
-npm run local -- work
-```
-
-A previously installed module is retained when a later invocation selects fewer modules. Use `modules.set` to disable it; omission is never a data deletion command. Modules with dependencies or recorded cross-module references cannot be disabled. No data-deleting module uninstall is provided in this milestone.
-
-Inspect the actual catalog and module state:
-
-```sh
-npm run sift -- catalog --config .local/owner.json
-npm run sift -- modules.list --config .local/owner.json
-npm run sift -- schema.inspect --config .local/owner.json
-npm run sift -- config.info --config .local/owner.json
-```
-
-Discover the input contract for an operation before calling it:
-
-```sh
-npm run sift -- work.claim --help
-npm run sift -- work.artifacts.add --help
-```
-
-Operation help is generated from the bundled registry and works without credentials or a running server. It shows the caller's JSON input, required fields, defaults/limits, and the stable request-key requirement. The CLI manages lease secrets and epochs automatically. Use `catalog` with your credential to check which operations the current server actually permits; local help describes supported syntax, not authorization or module enablement.
-
-Create a project and work item (use returned IDs for subsequent operations):
-
-```sh
-npm run sift -- projects.create --config .local/owner.json --key project-1 \
-  --json '{"title":"My project","instructions":"Keep source references and verify the result"}'
-
-npm run sift -- work.create --config .local/owner.json --key work-1 \
-  --json '{"title":"Check the local workflow","steps":[{"key":"check","title":"Observe the intended result","required":true}]}'
-```
-
-Each mutation requires a stable request key. Retry identical input with the same key after a lost response. Changing the input requires a different key. `--file input.json` can replace `--json` for larger payloads.
-
-## First complete workflow
-
-After default setup (or a setup containing `projects,context,work`), run:
-
-```sh
 npm run example:first-work
 ```
 
-The [readable example](scripts/first-work.mjs) creates a project, source note and work item through the CLI; issues a temporary scoped agent credential; claims through CLI; then launches a real stdio MCP client to read the note, build context, submit evidence and request review. It asserts that the note matches, request-key replay returns the same work, and the agent cannot accept its own work through either CLI or MCP. Finally the owner CLI records scripted acceptance and the temporary credential is revoked. No model or external MCP app is needed.
+`npm run local` starts PostgreSQL 17 and the server on `http://127.0.0.1:8088`, writing random database credentials and `.local/owner.json` with private permissions. `npm run example:first-work` ([scripts/first-work.mjs](scripts/first-work.mjs)) runs a full CLI-and-MCP check: it creates a project, note, and work item via CLI, mints a temporary agent credential, claims work, launches a real stdio MCP client to build context and submit evidence, confirms request-key replay and that the agent is refused `work.accept` on both CLI and MCP, records owner acceptance, and revokes the temporary credential (saving IDs to `.local/first-work.json`).
 
-Each run creates a new example project. Records remain available; IDs and the result are saved in `.local/first-work.json`. This is an executable tutorial and technical check, not independent human acceptance. To inspect its work without copying a placeholder ID:
+> [!IMPORTANT]
+> Keep `.local/` private and paired with its database. Do not commit it, paste credential file contents, delete `.local/`, or run `docker compose down -v` as troubleshooting. To use a port other than `8088`, export `SIFT_PORT` **before** the first `npm run local`. See [docs/OPERATIONS.md](docs/OPERATIONS.md) for custom ports, selective module installs, and troubleshooting.
+
+## Graph UI & Antigravity
+
+Start the local Graph UI (`@siftable/graph-ui`) after building:
 
 ```sh
-WORK_ID=$(node -p 'JSON.parse(require("fs").readFileSync(".local/first-work.json","utf8")).workId')
-npm run sift -- work.get --json "{\"id\":\"$WORK_ID\"}"
+npm run ui
 ```
 
-Minimal `context`-only or `work`-only installations intentionally cannot run this combined example. Their available operations are shown by `catalog`.
+The UI listens on `http://127.0.0.1:7041` (override with `SIFT_UI_PORT` or `ANTIGRAVITY_SIDECAR_WEB_PORT`). It connects live using `SIFT_CONFIG` or `.local/owner.json`, or falls back automatically to interactive demo mode (`SIFT_UI_DEMO=1` or when unconfigured) so you can inspect the interface without Docker running. Features include a pan/zoom DAG canvas with an orange active frontier, a priority-ordered `Next` queue, inline `+ Fork branches`, handback artifact inspection, and human `Accept` or `Reopen / Requeue` controls.
+
+Install the global Antigravity plugin (`~/.gemini/config/plugins/siftable-graph`, override with `-- --target <dir>`):
+
+```sh
+npm run plugin:install
+```
+
+This configures the auxiliary-pane Graph sidecar (`owner.json`, or demo mode until created), installs the `siftable-dag` skill and `AGENTS.md` rules, and writes `mcp_config.json` wired to `.local/worker.json` once minted (skipped until `worker.json` exists unless you pass `-- --allow-owner-mcp`).
 
 ## Modules
 
-| Module | Requires | Implemented in this milestone |
-|---|---|---|
-| foundation | Always installed | Owner/agent credentials, scopes, module ledger, registry, audit, durable idempotency |
-| projects | foundation | Create/get/list/update/delete/restore projects and instructions |
-| context | foundation | Note CRUD, reversible deletion, revision history, lexical search, immutable context packets with source revisions and omissions |
-| work | foundation | CRUD, dependencies and cycle checks, claim/start/heartbeat/release/block/fail/requeue/review/accept/cancel, immutable plans/evidence/artifacts |
-| planning | projects | Task CRUD, completion/cancellation, project linkage and acceptance criteria |
-| extensions | foundation | Versioned custom schemas, validated record CRUD, reversible deletion, typed relationship CRUD |
+Siftable exposes **63 registry operations** across **6 modules** (`packages/contracts/src/index.ts`):
 
-Optional associations use foundation entity references. Work requires no project or context tables. Planning explicitly requires Projects. Foundation remains small and does not contain the retired CRM, calendar, billing or execution domains.
+| Module | Ops | Requires | Scope |
+|---|---|---|---|
+| `foundation` | 3 | Always installed | Credentials, scopes, module ledger, schema inspect, audit, idempotency |
+| `projects` | 6 | `foundation` | Project CRUD, instructions, tombstone delete and restore |
+| `context` | 10 | `foundation` | Note CRUD, search, revision history, immutable context packets |
+| `work` | 25 | `foundation` | Work CRUD, `work.graph`, `work.fork`, leases, evidence, artifacts, review/accept |
+| `planning` | 6 | `projects` | Human task CRUD, completion/cancellation, acceptance criteria |
+| `extensions` | 13 | `foundation` | Versioned custom object schemas, validated records, typed relations |
 
-Modules own SQL schemas and migration checksums under `modules/`. Startup does not mutate the schema. Local administration applies migrations explicitly. Changes to an applied migration checksum fail closed; append a new numbered migration rather than editing receipts. The runner upgrades existing version-1 installations to version 2 transactionally, verifies each checksum, and preserves disabled module state. `install` upgrades all installed modules as well as adding the requested modules.
+Inspect available operations and parameter schemas directly from the CLI:
 
-Installation and module toggles share a state lock. Installing an enabled dependent, such as Planning, fails atomically if its prerequisite is disabled. Enable Projects first; an installation does not silently reenable it.
+```sh
+npm run sift -- catalog --config .local/owner.json
+npm run sift -- work.graph --help
+npm run sift -- work.fork --help
+```
 
-Module enablement, tool presentation and credential permissions are separate. Direct HTTP calls receive the same authorization checks as MCP calls. Installing/disabling modules is instance administration; record access is scoped to the credential's owner and personal/named scope.
+`--help` renders syntax offline from the bundled registry; `catalog` queries the running server for enabled modules and credential permissions.
 
-## Agents, evidence and review
+## MCP
 
-Create an agent credential using `ownerId` from `config.info` (also returned by the first bootstrap). This command reads local identity metadata; it does not verify current server authority. Get the ID without displaying the credential:
+Mint a scoped agent credential using `ownerId` from `config.info` without printing secrets:
 
 ```sh
 OWNER_ID=$(node packages/cli/dist/index.js config.info --config .local/owner.json | node -pe 'JSON.parse(require("fs").readFileSync(0,"utf8")).ownerId')
-```
 
-```sh
 docker compose run --rm admin credential \
   --owner-id "$OWNER_ID" --role agent \
   --permissions foundation:read,projects:read,context:read,context:write,work:read,work:write \
   --output /run/sift/worker.json --url "http://127.0.0.1:${SIFT_PORT:-8088}"
 ```
 
-Use `.local/worker.json` on the host. `work.claim` stores the generated lease secret in the credential directory's protected `leases/` store. Later CLI/MCP mutations use that same custody automatically; secrets do not appear in tool output. The files must be protected from other OS users. These credentials distinguish API authority; they do not sandbox processes running as the same OS user.
-
-Claim secrets are stored separately per attempt. Before a new lease mutation, the client uses `work.lease` to resolve its current claim identifier and epoch, then saves a private binding for that mutation's request key. Retrying the key uses the original binding even after release or expiry. An old claim response cannot overwrite a newer claim, and recovery can safely reuse or lower epochs. `work.lease` returns no work content or secret; it requires `work:write` and returns metadata only for the caller's own active lease. An owner cannot resolve another principal's lease. Keep clients and server on the same build when upgrading; this client requires that new operation. Existing private lease files remain readable for active claims and historical retries.
-
-The normal sequence is:
-
-```text
-work.create -> work.claim -> work.start -> work.evidence -> work.review
-                                                           |
-                                            owner: work.accept
-```
-
-`work.evidence` needs the returned plan version and step ID, an attempt ID, outcome (`passed`, `failed`, `error`), bounded output and provenance. Only an active lease holder may submit. A later failed attempt replaces an earlier passing result for coverage. Revising a plan retains history and starts new coverage. A reviewer can accept only work in review with passing required evidence; acceptance records the operator and plan version.
-
-Evidence is a statement by its submitter. Siftable does not execute submitted commands or turn a worker's report into independent verification. `commands_passed`, `done`, and operator acceptance remain distinct fields.
-
-## Edits, deletion and retries
-
-Project, note, task, custom-object and work edits require the current `revision`; stale edits fail with `revision_conflict`. Task status is human planning state (`open`, `in_progress`, `done`, `cancelled`), independent of executable work acceptance.
-
-`projects.delete`, `notes.delete`, `tasks.delete`, `objects.delete` and `work.delete` require an owner credential, expected revision and reason. They **tombstone** records. Normal get/list/search/reference operations exclude them; `includeDeleted: true` exposes them for inspection. `*.restore` reverses deletion with the expected revision and reason. Incoming active references prevent deletion, and restore requires available outgoing references. Work must be terminal before deletion. Evidence, artifacts, note revisions, context packets and audit/idempotency receipts remain intact. This is not secure erasure or storage reclamation.
-
-```sh
-npm run sift -- projects.update --key project-edit-1 \
-  --json '{"id":"PROJECT_UUID","revision":1,"title":"Revised project","instructions":"Record the evidence"}'
-
-npm run sift -- notes.list --json '{"limit":30,"offset":0}'
-npm run sift -- notes.history --json '{"id":"NOTE_UUID"}'
-```
-
-A lease holder can `work.block` or `work.fail` with a reason. Both release the lease. The operator uses `work.requeue` to retry blocked, failed, cancelled or reviewed work. Requeue creates a fresh plan version and fresh step IDs; previous evidence remains visible but cannot satisfy the retry. `work.release` is a handoff within the same plan, preserving evidence. Accepted work is immutable with respect to its plan and cannot be requeued; create follow-up work instead.
-
-`work.update` and `work.dependencies.set` accept only queued/blocked work with the expected revision, and start new verification coverage. Dependency edits reject cycles. `work.plan.revise` retains previous plans and returns nonterminal work to the queue. `work.get` includes dependencies, plan history, evidence, events and artifact metadata.
-
-`work.artifacts.add` requires an active lease and stores a bounded text artifact (up to 64,000 characters), its media type, SHA-256, actor and plan version. New creation receipts include `artifactId` alongside the work `id`, so callers can immediately use `work.artifacts.get` without listing. Identical request-key retries return the same receipt and artifact ID. `work.artifacts.list` also retrieves metadata; historical receipts remain unchanged. Artifacts are immutable and included in backups. Binary/object-store attachments are not implemented. Custom relationship edges can be read/updated/deleted; built-in project/work associations are outside that API. Schema and relationship **definitions** remain immutable contracts.
-
-## MCP
-
-Configure any client supporting MCP over stdio. Use absolute paths:
+Point any stdio MCP client at the built server using absolute paths:
 
 ```json
 {
@@ -179,108 +128,50 @@ Configure any client supporting MCP over stdio. Use absolute paths:
 }
 ```
 
-`SIFT_TOOLS` selects module groups for presentation. It cannot grant permissions. Discovery refreshes the server catalog; calls recheck enabled modules and permissions. Mutations require `requestKey`. Tool names replace dots with underscores, such as `work_claim` and `notes_get`. Schemas and tools come from the same operation registry as the API. Discovery describes caller input: fields with server defaults, such as lease duration and pagination, are optional.
+`SIFT_TOOLS` filters tool presentation (`work_claim`, `notes_get`, etc.) and never grants permissions. Use the same credential path across CLI and MCP when continuing a claim so both read the same `.local/leases/` custody files.
 
-The initial transport is stdio MCP connecting to the local HTTP API. HTTP MCP transport and MCP Apps are not included.
+## Backup and validation
 
-The `example:first-work` command above is a working MCP client example. Keep `worker.json` for your own MCP app separate from the example's temporary, revoked credential. Use the same credential path in CLI and MCP when continuing a claim so both find the protected lease files.
-
-## Extend the schema
-
-Define a namespaced object without modifying application code:
+Create, verify, and restore PostgreSQL 17 backups:
 
 ```sh
-npm run sift -- extensions.define --config .local/owner.json --key paper-schema-1 \
-  --file examples/research-paper.json
-
-npm run sift -- objects.create --config .local/owner.json --key paper-1 \
-  --json '{"type":"research.paper","version":1,"data":{"title":"A useful source","year":2026}}'
+docker compose run --rm admin backup --output /run/sift/backup-001
+docker compose run --rm admin backup-verify --file /run/sift/backup-001
+docker compose run --rm admin restore --file /run/sift/backup-001 --database siftable_recovered
 ```
 
-The same object operations are available through MCP. Schemas support a bounded JSON Schema subset: objects/properties, required fields, types, enum/const, array items, numeric/string/array bounds and additional-properties rules. Remote references, regex patterns, executable code and SQL are not accepted. Built-in namespaces are reserved even when their modules are absent.
+Restore targets a **fresh database only**, clears active leases, and restores snapshot revocation state—reapply any post-backup credential revocations before serving the recovered database (see [docs/BACKUP_AND_RECOVERY.md](docs/BACKUP_AND_RECOVERY.md)).
 
-Definitions are immutable and versioned. The initial upgrade path permits adding optional properties while preserving existing constraints. Existing records retain their declared version. Record updates validate the declared schema and expected record revision. They may explicitly move to a newer compatible schema version. Breaking schema migrations and relationship cardinality customization are deferred. Relationships are directed, unique source/type/target edges with many-to-many cardinality and validated endpoint types/existence/scope.
-
-## Validate and operate
+Run unit, type, formatting, isolated integration, and clean-environment README checks, or stop and resume the Compose stack without losing data:
 
 ```sh
 npm test
 npm run typecheck
 npm run format:check
 npm run test:isolated
-```
-
-`test:isolated` builds a test image, creates its own randomly named Docker network and disposable database, runs real CLI/server/MCP subprocesses on Node 22, and removes the containers/network. The network has no external route. The integration scenarios cover independent schemas, version-1 upgrades, CRUD/deletion/recovery, claims, evidence, handoff, scope enforcement, extensions, work retries/artifacts, backup integrity and restart. The TAP report is saved under `.local/validation/`.
-
-Maintainers can reproduce the clean-environment README gate after committing their changes:
-
-```sh
 npm run test:readme
 ```
-
-This tests **committed HEAD**, excluding uncommitted files. It copies a source archive into a fresh Linux environment with Node 22, a non-root user, its own Docker daemon, and empty image/npm/database/configuration state. It runs setup, the CLI/MCP example, stop/start, and backup/restore with real assertions. It needs network downloads and a Docker host that permits privileged Docker-in-Docker containers. No host socket/home mounts or host ports are used; privileged containers are a test harness, not a security sandbox. The [Docker official image documentation](https://hub.docker.com/_/docker) describes that requirement. The runner removes its own disposable container and volumes and retains non-secret logs, source hash and receipt under `.local/readme-*/`. It leaves existing Compose services alone. This is automated clean-environment proof, not evidence of an unaided human or every supported host platform.
-
-To test the built image's CLI, MCP and server artifacts:
-
-```sh
-docker compose build server
-SIFT_TEST_IMAGE=siftable-headless:local npm run test:isolated
-```
-
-Stop or resume the local instance without deleting data:
 
 ```sh
 docker compose stop
 docker compose start
 ```
 
-After starting or switching databases, wait for this command to succeed before running API commands (or rerun `npm run local` for its readiness check):
+`npm run test:readme` archives **committed `HEAD`** into a clean Linux Docker-in-Docker environment and verifies setup, CLI/MCP flow, stop/start, and backup/restore automatically (not unaided human UX or every host OS). See [docs/OPERATIONS.md](docs/OPERATIONS.md) for harness details, `EACCES` ownership checks, and operational procedures.
 
-```sh
-node -e 'fetch(`http://127.0.0.1:${process.env.SIFT_PORT || 8088}/health`).then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))'
-```
+## Scope and limits
 
-A healthy server alone is not workflow proof; use the example above.
+- **Local extraction, private packages**: All workspace packages are `"private": true`; package publication and root-license selection are pending.
+- **API role separation, not OS sandboxing**: `.local/worker.json` cannot self-accept work, but credentials do not isolate processes running as the same OS user. Compose `server` binds `127.0.0.1:${SIFT_PORT:-8088}` under fixed project name `siftable-headless` (one install per Docker daemon) and is not an outbound firewall.
+- **Submitter-asserted evidence**: `work.evidence` records the submitter's statement and provenance; Siftable does not execute submitted commands or treat `commands_passed` as human acceptance.
+- **Bounded formats and transport**: Stdio MCP only (no HTTP MCP or MCP Apps). `work.artifacts.add` stores bounded text up to `64,000` characters with no binary or object-store attachments.
+- **Non-destructive tombstones and immutable definitions**: `*.delete` tombstones records without reclaiming storage; `modules.set` disables only unreferenced modules; schema and relation definitions are immutable and support optional-property upgrades only.
+- **Out of scope**: Managed agent execution or launching, code-memory module, collaboration mailbox, calendar/CRM, repo checkout mapping, portable record interchange, and hosted-client compatibility promises.
 
-If setup fails, keep the error and rerun after correcting its cause. Do not delete `.local/` or use `docker compose down -v` as troubleshooting: credentials and database state belong together. Check Docker access with `docker info`, port conflicts with `docker compose ps`, and whether the requested modules are enabled with `modules.list`. A CLI `EACCES` on an installation made with an earlier build can mean root-owned files; inspect ownership with `ls -ld .local .local/owner.json` and correct ownership locally without loosening file modes. Do not post file contents.
+### Docs
 
-`.local/` contains credentials and must never be committed or shared. Keep it with the database when moving a private installation. Database recovery is documented below. Portable record interchange/import remains separate future work. Local acceptance is not workload qualification or independent security review.
-
-## Backup and restore
-
-Backups use PostgreSQL 17 `pg_dump` custom archives and an exported transaction snapshot. A private manifest records module versions/checksums, enabled state, archive SHA-256, and row counts/SHA-256 for every owned table. Restore uses `pg_restore` into a **new** database, verifies all table hashes, reapplies restricted runtime grants and invalidates active leases before enabling runtime access. The tools are included in the Docker image. Native CLI users need PostgreSQL 17 client binaries on `PATH` and a PostgreSQL superuser for restore, as supplied by the local Compose admin configuration. The serving role remains restricted.
-
-```sh
-# Run with the local database available. The destination must not already exist.
-docker compose run --rm admin backup --output /run/sift/backup-001
-docker compose run --rm admin backup-verify --file /run/sift/backup-001
-
-# A fresh database name is mandatory; existing databases are never overwritten.
-docker compose run --rm admin restore \
-  --file /run/sift/backup-001 --database siftable_recovered
-```
-
-The host backup is `.local/backup-001/`. A manifest is written only when the backup completes. The directory is mode 0700 and files are mode 0600. Only restore trusted backups you created: native PostgreSQL archives contain executable schema SQL. Hashes detect accidental corruption, not malicious replacement by someone who controls both archive and manifest. Preserve the matching application image/release with each backup; this version requires exact module schema versions and PostgreSQL major 17. [PostgreSQL dump documentation](https://www.postgresql.org/docs/17/app-pgdump.html) describes snapshots and native archive behavior.
-
-Restore preserves owner/scope/principal IDs, token **hashes**, definitions, records, receipts, evidence, artifacts and deletion state. It does not copy plaintext credentials, lease files, database-role passwords or external files. Keep credential files separately in private storage, or issue new credentials with `credential --owner-id ...` against the recovered database. Old active leases are cleared with a recorded restore event and incremented epoch; use a **new** claim request key after recovery. Server receipts remain immutable. Client retries of lease-bearing operations also require their private custody at the same API URL. If you move to a different URL, claim afresh with new keys; local lease bindings are intentionally isolated by endpoint and are not automatically relocated. The service-switch procedure below retains the URL.
-
-Credential revocations are restored to their snapshot state too. Before serving a recovered database, reapply any revocations made after the backup, or replace and revoke the affected credentials against the recovered target. Recovery does not infer later security decisions from the original database.
-
-Restore never switches the running service automatically. To inspect the new database with the existing Compose service, stop the service and change only the database name in its protected URL file, without printing the URL:
-
-```sh
-docker compose stop server
-node --input-type=module -e 'import {readFile,writeFile} from "node:fs/promises"; const p=".local/runtime-db-url"; const u=new URL((await readFile(p,"utf8")).trim()); u.pathname="/siftable_recovered"; await writeFile(p,u.href,{mode:0o600});'
-docker compose up -d --force-recreate server
-npm run sift -- modules.list --config .local/owner.json
-```
-
-To administer the recovered database later, similarly change the database component of `.local/admin-db-url`. Both old and recovered databases remain present; moving the URL back recovers the previous serving choice.
-
-Restore creates its target with a zero ordinary-connection limit from the outset; the trusted superuser can still inspect and restore it. Only verified completion grants runtime access and lifts that limit. On a recoverable failure, the tool restricts access again, terminates ordinary sessions on that new target, and checks the result before reporting quarantine. If a connection failure prevents reconciliation, it reports **access state unknown**. An uncertain creation response identifies the database name for inspection without modifying a potentially competing target. Keep the original serving configuration and inspect uncertain outcomes before retrying or switching databases. No failed restore is reported as successful, and automatic cleanup never drops a database. Backups currently cover only installed Siftable module schemas, not unrelated schemas added manually to the database.
-
-## Development status
-
-The complete proposal is in [the extraction plan](docs/extraction-plan.md). Actual implemented scope, tests, intentional compatibility changes and next dependencies are recorded in [WORK.md](docs/WORK.md). [Provenance](docs/PROVENANCE.md) distinguishes copied source from adapted contracts and new implementation.
-
-This milestone has no code-memory module, collaboration mailbox, managed execution, agent launching, arbitrary plugins, calendar/CRM, or hosted-client compatibility promise. The bounded CRUD/work lifecycle is implemented; repository checkout mapping, richer goals/planning and full former-client parity remain outside this milestone. Repository/package publication and root-license selection are pending; packages remain private.
+- [docs/OPERATIONS.md](docs/OPERATIONS.md) — module migrations, `work.lease` epoch custody, tombstones, custom schema rules, custom ports, and troubleshooting
+- [docs/BACKUP_AND_RECOVERY.md](docs/BACKUP_AND_RECOVERY.md) — snapshot manifest model, database URL switching, and quarantine recovery
+- [docs/extraction-plan.md](docs/extraction-plan.md) — full local extraction proposal
+- [docs/WORK.md](docs/WORK.md) — implemented scope, tests, and compatibility notes
+- [docs/PROVENANCE.md](docs/PROVENANCE.md) — source provenance and adapted contracts
