@@ -477,7 +477,8 @@ export function renderGraphUiHtml(): string {
     selectedWorkId: null,
     selectedDetail: null,
     expandedArtifacts: {},
-    showForkForm: false,
+    activeAction: null,
+    fallbackPromptText: '',
     autoPoll: true,
     transform: { x: 40, y: 40, scale: 1 },
     hasFittedOnce: false,
@@ -878,14 +879,21 @@ export function renderGraphUiHtml(): string {
       await navigator.clipboard.writeText(text);
       showToast('Copied Antigravity agent prompt');
     } catch {
-      window.prompt('Copy prompt:', text);
+      state.fallbackPromptText = text;
+      state.activeAction = 'prompt';
+      if (state.selectedWorkId !== id) {
+        await openDetail(id);
+        state.activeAction = 'prompt';
+      }
+      renderDrawer();
+      showToast('Clipboard unavailable — select & copy below');
     }
   }
 
   async function openDetail(id) {
     if (!id) return;
     state.selectedWorkId = id;
-    state.showForkForm = false;
+    state.activeAction = null;
     $('drawer').classList.add('open');
     renderGraph();
     try {
@@ -940,8 +948,50 @@ export function renderGraphUiHtml(): string {
       \${canCancel ? '<button class="btn danger" id="drawerCancelBtn">Cancel</button>' : ''}
     </div>\`);
 
-    // Inline Fork form
-    if (state.showForkForm && canFork) {
+    // Inline action forms (no browser modal dialogs — works cleanly inside sandboxed webviews)
+    if (state.activeAction === 'accept' && canAccept) {
+      parts.push(\`<div class="card-box" style="border-color:rgba(34,197,94,0.45)">
+        <div class="card-box-head"><span>Accept work item</span></div>
+        <form id="acceptForm">
+          <div class="field">
+            <label for="acceptSummary">Acceptance summary</label>
+            <textarea id="acceptSummary" rows="3" required>\${esc(d.summary || 'Accepted after review')}</textarea>
+          </div>
+          <div style="display:flex;justify-content:flex-end;gap:8px">
+            <button type="button" class="btn" id="cancelActionBtn">Cancel</button>
+            <button type="submit" class="btn accept" id="confirmAcceptBtn">✓ Confirm Accept</button>
+          </div>
+        </form>
+      </div>\`);
+    } else if (state.activeAction === 'requeue' && canRequeue) {
+      parts.push(\`<div class="card-box" style="border-color:rgba(245,158,11,0.45)">
+        <div class="card-box-head"><span>Reopen / Requeue work item</span></div>
+        <form id="requeueForm">
+          <div class="field">
+            <label for="requeueReason">Reason</label>
+            <input id="requeueReason" value="Reopened for follow-up" required />
+          </div>
+          <div style="display:flex;justify-content:flex-end;gap:8px">
+            <button type="button" class="btn" id="cancelActionBtn">Cancel</button>
+            <button type="submit" class="btn orange">↻ Confirm Requeue</button>
+          </div>
+        </form>
+      </div>\`);
+    } else if (state.activeAction === 'cancel' && canCancel) {
+      parts.push(\`<div class="card-box" style="border-color:rgba(239,68,68,0.45)">
+        <div class="card-box-head"><span>Cancel work item</span></div>
+        <form id="cancelWorkForm">
+          <div class="field">
+            <label for="cancelReason">Cancel reason</label>
+            <input id="cancelReason" value="Superseded" required />
+          </div>
+          <div style="display:flex;justify-content:flex-end;gap:8px">
+            <button type="button" class="btn" id="cancelActionBtn">Keep open</button>
+            <button type="submit" class="btn danger">Confirm Cancel</button>
+          </div>
+        </form>
+      </div>\`);
+    } else if (state.activeAction === 'fork' && canFork) {
       parts.push(\`<div class="card-box fork-box">
         <div class="card-box-head"><span>Fork child branches (one per line)</span></div>
         <form id="forkForm">
@@ -953,10 +1003,15 @@ export function renderGraphUiHtml(): string {
             <input id="forkReason" value="Split into parallel branches" required />
           </div>
           <div style="display:flex;justify-content:flex-end;gap:8px">
-            <button type="button" class="btn" id="cancelForkBtn">Cancel</button>
+            <button type="button" class="btn" id="cancelActionBtn">Cancel</button>
             <button type="submit" class="primary-btn">Create Fork</button>
           </div>
         </form>
+      </div>\`);
+    } else if (state.activeAction === 'prompt' && state.fallbackPromptText) {
+      parts.push(\`<div class="card-box fork-box">
+        <div class="card-box-head"><span>Antigravity Agent Prompt</span><button type="button" class="btn" id="cancelActionBtn">Close</button></div>
+        <textarea rows="7" readonly style="width:100%;font-family:var(--mono);font-size:11.5px;background:#07080b;border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text)">\${esc(state.fallbackPromptText)}</textarea>
       </div>\`);
     }
 
@@ -1047,11 +1102,27 @@ export function renderGraphUiHtml(): string {
 
     $('drawerCopyPrompt')?.addEventListener('click', () => copyAgentPrompt(d.id));
     $('drawerForkToggle')?.addEventListener('click', () => {
-      state.showForkForm = !state.showForkForm;
+      state.activeAction = state.activeAction === 'fork' ? null : 'fork';
       renderDrawer();
+      $('forkLines')?.focus();
     });
-    $('cancelForkBtn')?.addEventListener('click', () => {
-      state.showForkForm = false;
+    $('drawerAcceptBtn')?.addEventListener('click', () => {
+      state.activeAction = state.activeAction === 'accept' ? null : 'accept';
+      renderDrawer();
+      $('confirmAcceptBtn')?.focus();
+    });
+    $('drawerRequeueBtn')?.addEventListener('click', () => {
+      state.activeAction = state.activeAction === 'requeue' ? null : 'requeue';
+      renderDrawer();
+      $('requeueReason')?.focus();
+    });
+    $('drawerCancelBtn')?.addEventListener('click', () => {
+      state.activeAction = state.activeAction === 'cancel' ? null : 'cancel';
+      renderDrawer();
+      $('cancelReason')?.focus();
+    });
+    $('cancelActionBtn')?.addEventListener('click', () => {
+      state.activeAction = null;
       renderDrawer();
     });
     $('forkForm')?.addEventListener('submit', async (ev) => {
@@ -1070,7 +1141,7 @@ export function renderGraphUiHtml(): string {
             branches: lines.map((title) => ({ title, description: '' })),
           }),
         });
-        state.showForkForm = false;
+        state.activeAction = null;
         showToast(\`Forked \${lines.length} branch\${lines.length === 1 ? '' : 'es'}\`);
         await refresh();
         await openDetail(d.id);
@@ -1078,14 +1149,16 @@ export function renderGraphUiHtml(): string {
         showToast(err.message);
       }
     });
-    $('drawerAcceptBtn')?.addEventListener('click', async () => {
-      const summary = window.prompt('Acceptance summary:', d.summary || 'Accepted after review');
+    $('acceptForm')?.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const summary = $('acceptSummary').value.trim();
       if (!summary) return;
       try {
         await api(\`/api/work/\${encodeURIComponent(d.id)}/accept\`, {
           method: 'POST',
           body: JSON.stringify({ summary }),
         });
+        state.activeAction = null;
         showToast('Work accepted — dependents updated');
         await refresh();
         await openDetail(d.id);
@@ -1093,14 +1166,16 @@ export function renderGraphUiHtml(): string {
         showToast(err.message);
       }
     });
-    $('drawerRequeueBtn')?.addEventListener('click', async () => {
-      const reason = window.prompt('Reason for requeue/reopen:', 'Reopened for follow-up');
+    $('requeueForm')?.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const reason = $('requeueReason').value.trim();
       if (!reason) return;
       try {
         await api(\`/api/work/\${encodeURIComponent(d.id)}/requeue\`, {
           method: 'POST',
           body: JSON.stringify({ reason }),
         });
+        state.activeAction = null;
         showToast('Work requeued');
         await refresh();
         await openDetail(d.id);
@@ -1108,14 +1183,16 @@ export function renderGraphUiHtml(): string {
         showToast(err.message);
       }
     });
-    $('drawerCancelBtn')?.addEventListener('click', async () => {
-      const reason = window.prompt('Cancel reason:', 'Superseded');
+    $('cancelWorkForm')?.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const reason = $('cancelReason').value.trim();
       if (!reason) return;
       try {
         await api(\`/api/work/\${encodeURIComponent(d.id)}/cancel\`, {
           method: 'POST',
           body: JSON.stringify({ reason }),
         });
+        state.activeAction = null;
         showToast('Work cancelled');
         await refresh();
         await openDetail(d.id);
@@ -1143,7 +1220,7 @@ export function renderGraphUiHtml(): string {
     renderGraph();
     renderNext();
     renderTasks();
-    if (state.selectedWorkId && $('drawer').classList.contains('open')) {
+    if (state.selectedWorkId && $('drawer').classList.contains('open') && !state.activeAction) {
       const stillExists = state.graph.nodes.some((n) => n.id === state.selectedWorkId);
       if (stillExists) {
         try {
