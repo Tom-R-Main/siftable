@@ -1721,6 +1721,283 @@ test('standalone headless acceptance on real PostgreSQL and subprocess clients',
         'evidence_incomplete',
       );
     });
+    await t.test(
+      'work.fork and work.graph enforce revisions, project inheritance, frontier ordering, filtering, and fresh post-fork verification',
+      async () => {
+        const dagProject = await callCli(f, 'projects.create', {
+          title: 'DAG acceptance project',
+          instructions: 'Verify work.fork and work.graph on real PostgreSQL 17',
+        });
+        const otherProject = await callCli(f, 'projects.create', {
+          title: 'Unrelated DAG project',
+        });
+        const unrelated = await createWork(f.owner, {
+          title: 'Unrelated project root',
+          projectId: otherProject.id,
+        });
+        const root = await createWork(f.owner, {
+          title: 'DAG root integration',
+          projectId: dagProject.id,
+        });
+        const sideRoot = await createWork(f.owner, {
+          title: 'Independent DAG root',
+          projectId: dagProject.id,
+        });
+
+        // Record passing pre-fork evidence on plan version 1, then block the parent before forking.
+        await invoke(a.client, 'work.claim', { id: root.id });
+        await invoke(a.client, 'work.start', { id: root.id });
+        await invoke(a.client, 'work.evidence', {
+          id: root.id,
+          planVersion: 1,
+          stepId: root.plan.steps[0].id,
+          attemptId: 'pre-fork-pass',
+          outcome: 'passed',
+          output: 'Passed before forking into sub-branches',
+          provenance: 'fixture://pre-fork',
+        });
+        const blockedRoot = await invoke(a.client, 'work.block', {
+          id: root.id,
+          reason: 'Needs parallel sub-branches',
+        });
+        assert.equal(blockedRoot.status, 'blocked');
+        assert.equal(blockedRoot.plan_version, 1);
+        assert.equal(blockedRoot.coverage.state, 'commands_passed');
+
+        // Stale revision must be rejected with revision_conflict without mutating state.
+        await reject(
+          () =>
+            invoke(a.client, 'work.fork', {
+              id: root.id,
+              revision: blockedRoot.revision - 1,
+              reason: 'Stale revision probe',
+              branches: [{ title: 'Should not exist' }],
+            }),
+          'revision_conflict',
+        );
+
+        // Fork the blocked parent into two branches; parent resets to queued (not claimable) with bumped plan_version & revision.
+        const fork1 = await callCli(
+          f,
+          'work.fork',
+          {
+            id: root.id,
+            revision: blockedRoot.revision,
+            reason: 'Decompose root into two parallel branches',
+            branches: [
+              { title: 'Branch Alpha', description: 'Nested branch' },
+              { title: 'Branch Beta', description: 'Direct branch' },
+            ],
+          },
+          'fork-root-branches',
+          a.path,
+        );
+        assert.equal(fork1.parent.status, 'queued');
+        assert.equal(fork1.parent.claimable, false);
+        assert.equal(fork1.parent.plan_version, 2);
+        assert.equal(fork1.parent.revision, blockedRoot.revision + 1);
+        assert.equal(fork1.parent.coverage.state, 'unverified');
+        assert.equal(fork1.branches.length, 2);
+        const [branchA, branchB] = fork1.branches;
+        for (const branch of [branchA, branchB]) {
+          assert.equal(branch.status, 'queued');
+          assert.equal(branch.claimable, true);
+          assert.ok(
+            branch.links.some((l) => l.relation === 'belongs_to' && l.target_id === dagProject.id),
+            'Forked branch must inherit parent belongs_to project link',
+          );
+        }
+
+        // Reusing the pre-fork revision must also fail with revision_conflict.
+        await reject(
+          () =>
+            invoke(a.client, 'work.fork', {
+              id: root.id,
+              revision: blockedRoot.revision,
+              reason: 'Stale post-fork revision probe',
+              branches: [{ title: 'Duplicate stale branch' }],
+            }),
+          'revision_conflict',
+        );
+
+        // Fork queued branchA into a leaf to create a 3-level DAG (leafA -> branchA -> root, branchB -> root).
+        const fork2 = await invoke(a.client, 'work.fork', {
+          id: branchA.id,
+          revision: branchA.revision,
+          reason: 'Split branchA into leaf work',
+          branches: [{ title: 'Leaf Alpha', description: 'Deepest dependency' }],
+        });
+        assert.equal(fork2.parent.status, 'queued');
+        assert.equal(fork2.parent.claimable, false);
+        assert.equal(fork2.parent.plan_version, 2);
+        assert.equal(fork2.parent.revision, branchA.revision + 1);
+        const leafA = fork2.branches[0];
+        assert.equal(leafA.claimable, true);
+        assert.ok(
+          leafA.links.some((l) => l.relation === 'belongs_to' && l.target_id === dagProject.id),
+          'Nested forked leaf must inherit belongs_to project link',
+        );
+
+        // Verify projectId-scoped work.graph returns accurate nodes, edges, roots, waiting ratios, transitive unblocksCount, and next ordering.
+        const projectGraph = await callCli(f, 'work.graph', { projectId: dagProject.id });
+        assert.deepEqual(
+          projectGraph.nodes.map((n) => n.id).sort(),
+          [root.id, sideRoot.id, branchA.id, branchB.id, leafA.id].sort(),
+        );
+        assert.ok(!projectGraph.nodes.some((n) => n.id === unrelated.id));
+        assert.deepEqual(projectGraph.roots.map((r) => r.id).sort(), [root.id, sideRoot.id].sort());
+        assert.equal(projectGraph.edges.length, 3);
+        assert.ok(projectGraph.edges.every((e) => e.satisfied === false));
+
+        const byId = new Map(projectGraph.nodes.map((n) => [n.id, n]));
+        assert.equal(byId.get(root.id).isRoot, true);
+        assert.equal(byId.get(root.id).depth, 0);
+        assert.equal(byId.get(root.id).uiState, 'waiting');
+        assert.equal(byId.get(root.id).claimable, false);
+        assert.deepEqual(byId.get(root.id).waiting, { satisfied: 0, total: 2 });
+        assert.equal(byId.get(root.id).unblocksCount, 0);
+
+        assert.equal(byId.get(branchA.id).depth, 1);
+        assert.equal(byId.get(branchA.id).uiState, 'waiting');
+        assert.deepEqual(byId.get(branchA.id).waiting, { satisfied: 0, total: 1 });
+        assert.equal(byId.get(branchA.id).directUnblocksCount, 1);
+        assert.equal(byId.get(branchA.id).unblocksCount, 1);
+
+        assert.equal(byId.get(branchB.id).depth, 1);
+        assert.equal(byId.get(branchB.id).uiState, 'ready');
+        assert.deepEqual(byId.get(branchB.id).waiting, { satisfied: 0, total: 0 });
+        assert.equal(byId.get(branchB.id).unblocksCount, 1);
+
+        assert.equal(byId.get(leafA.id).depth, 2);
+        assert.equal(byId.get(leafA.id).uiState, 'ready');
+        assert.equal(byId.get(leafA.id).directUnblocksCount, 1);
+        assert.equal(byId.get(leafA.id).unblocksCount, 2);
+
+        assert.equal(byId.get(sideRoot.id).isRoot, true);
+        assert.equal(byId.get(sideRoot.id).uiState, 'ready');
+        assert.equal(byId.get(sideRoot.id).unblocksCount, 0);
+
+        // Frontier ordering: higher transitive unblocksCount first (leafA: 2, branchB: 1, sideRoot: 0).
+        assert.deepEqual(projectGraph.next, [leafA.id, branchB.id, sideRoot.id]);
+
+        // Verify rootId filtering (both combined with projectId and standalone).
+        const rootGraph = await invoke(a.client, 'work.graph', {
+          projectId: dagProject.id,
+          rootId: root.id,
+        });
+        assert.deepEqual(
+          rootGraph.nodes.map((n) => n.id).sort(),
+          [root.id, branchA.id, branchB.id, leafA.id].sort(),
+        );
+        assert.deepEqual(rootGraph.roots.map((r) => r.id).sort(), [root.id, sideRoot.id].sort());
+        assert.deepEqual(rootGraph.next, [leafA.id, branchB.id]);
+
+        const rootOnlyGraph = await invoke(a.client, 'work.graph', { rootId: root.id });
+        assert.deepEqual(
+          rootOnlyGraph.nodes.map((n) => n.id).sort(),
+          [root.id, branchA.id, branchB.id, leafA.id].sort(),
+        );
+        assert.ok(rootOnlyGraph.roots.some((r) => r.id === unrelated.id));
+
+        const completeAndReview = async (workerClient, item, attemptId) => {
+          await invoke(workerClient, 'work.claim', { id: item.id });
+          await invoke(workerClient, 'work.start', { id: item.id });
+          await invoke(workerClient, 'work.evidence', {
+            id: item.id,
+            planVersion: item.plan_version,
+            stepId: item.plan.steps[0].id,
+            attemptId,
+            outcome: 'passed',
+            output: `Completed ${item.title}`,
+            provenance: `fixture://${attemptId}`,
+          });
+          await invoke(workerClient, 'work.review', {
+            id: item.id,
+            summary: `Ready to accept ${item.title}`,
+          });
+        };
+
+        // Move branchB to needs_review (needs_you) and complete+accept leafA so branchA becomes ready.
+        await completeAndReview(b.client, branchB, 'branch-b-done');
+        await completeAndReview(a.client, leafA, 'leaf-a-done');
+        await invoke(f.owner, 'work.accept', { id: leafA.id, summary: 'Accepted leafA' });
+
+        // Tie-break check: branchB (needs_you, unblocks 1) must appear ahead of branchA (ready, unblocks 1).
+        const midGraph = await invoke(a.client, 'work.graph', {
+          projectId: dagProject.id,
+          rootId: root.id,
+        });
+        const midById = new Map(midGraph.nodes.map((n) => [n.id, n]));
+        assert.deepEqual(midById.get(branchA.id).waiting, { satisfied: 1, total: 1 });
+        assert.equal(midById.get(branchA.id).claimable, true);
+        assert.equal(midById.get(branchA.id).uiState, 'ready');
+        assert.equal(midById.get(branchB.id).uiState, 'needs_you');
+        assert.deepEqual(midById.get(root.id).waiting, { satisfied: 0, total: 2 });
+        assert.equal(midById.get(root.id).claimable, false);
+        assert.deepEqual(midGraph.next, [branchB.id, branchA.id]);
+
+        // Accept branchB and verify root waiting ratio advances to 1/2.
+        await invoke(f.owner, 'work.accept', { id: branchB.id, summary: 'Accepted branchB' });
+        const halfGraph = await invoke(a.client, 'work.graph', {
+          projectId: dagProject.id,
+          rootId: root.id,
+        });
+        assert.deepEqual(halfGraph.nodes.find((n) => n.id === root.id).waiting, {
+          satisfied: 1,
+          total: 2,
+        });
+        assert.equal(halfGraph.nodes.find((n) => n.id === root.id).claimable, false);
+
+        // Complete and accept branchA (on its bumped plan_version 2 from fork2).
+        await completeAndReview(a.client, fork2.parent, 'branch-a-done');
+        await invoke(f.owner, 'work.accept', { id: branchA.id, summary: 'Accepted branchA' });
+
+        // All forked branches are accepted: root must flip to claimable: true (uiState: 'ready').
+        const unblockedGraph = await invoke(a.client, 'work.graph', {
+          projectId: dagProject.id,
+          rootId: root.id,
+        });
+        const readyRoot = unblockedGraph.nodes.find((n) => n.id === root.id);
+        assert.deepEqual(readyRoot.waiting, { satisfied: 2, total: 2 });
+        assert.equal(readyRoot.claimable, true);
+        assert.equal(readyRoot.uiState, 'ready');
+        assert.deepEqual(unblockedGraph.next, [root.id]);
+        assert.ok(unblockedGraph.edges.every((e) => e.satisfied === true && e.active === false));
+
+        // Claim the unblocked root and prove pre-fork v1 evidence cannot satisfy acceptance on bumped plan_version 2.
+        await invoke(a.client, 'work.claim', { id: root.id });
+        await invoke(a.client, 'work.start', { id: root.id });
+        await reject(
+          () =>
+            invoke(a.client, 'work.evidence', {
+              id: root.id,
+              planVersion: 1,
+              stepId: root.plan.steps[0].id,
+              attemptId: 'stale-v1-attempt',
+              outcome: 'passed',
+              output: 'Stale plan version submission',
+              provenance: 'fixture://stale-v1',
+            }),
+          'stale_plan',
+        );
+        await invoke(a.client, 'work.review', {
+          id: root.id,
+          summary: 'Attempt review with only pre-fork evidence',
+        });
+        await reject(
+          () =>
+            invoke(f.owner, 'work.accept', {
+              id: root.id,
+              summary: 'Old pre-fork evidence must not satisfy plan version 2',
+            }),
+          'evidence_incomplete',
+        );
+        const inspectedRoot = await invoke(f.owner, 'work.get', { id: root.id });
+        assert.equal(inspectedRoot.plan_version, 2);
+        assert.equal(inspectedRoot.coverage.state, 'unverified');
+        assert.equal(inspectedRoot.evidence.length, 1);
+      },
+    );
     await t.test('restart preserves accepted work and idempotency receipts', async () => {
       await stop(f);
       await start(f);
