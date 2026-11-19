@@ -183,6 +183,43 @@ export const operations = {
     false,
     z.object({ ...page, includeDeleted: z.boolean().default(false) }).strict(),
   ),
+  'work.graph': op(
+    'work',
+    false,
+    false,
+    z
+      .object({
+        projectId: id.optional(),
+        rootId: id.optional(),
+        includeDeleted: z.boolean().default(false),
+      })
+      .strict(),
+  ),
+  'work.fork': op(
+    'work',
+    true,
+    false,
+    z
+      .object({
+        id,
+        revision,
+        reason: title,
+        gate: z.enum(['done', 'commands_passed']).default('done'),
+        branches: z
+          .array(
+            z
+              .object({
+                title,
+                description: text.default(''),
+                steps: z.array(step).min(1).max(50).optional(),
+              })
+              .strict(),
+          )
+          .min(1)
+          .max(25),
+      })
+      .strict(),
+  ),
   'work.claim': op(
     'work',
     true,
