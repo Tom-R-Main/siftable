@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { readFile, writeFile, mkdir, lstat, link, unlink } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { z } from 'zod';
 import { operations, SiftError, type Operation, type OperationInput } from '@siftable/contracts';
 const configSchema = z
@@ -27,6 +27,27 @@ const leaseSchema = z.object({
 type Lease = z.infer<typeof leaseSchema>;
 const claimId = (secret: string) => hash(`siftable-lease:${hash(secret)}`);
 const missing = (e: unknown) => e && typeof e === 'object' && 'code' in e && e.code === 'ENOENT';
+async function ensureLeaseDir(dir: string): Promise<void> {
+  try {
+    const stat = await lstat(dir);
+    if (!stat.isDirectory() || (stat.mode & 0o077) !== 0)
+      throw new Error('Lease directory must be a private directory with mode 0700');
+    return;
+  } catch (e) {
+    if (!missing(e)) throw e;
+  }
+  await mkdir(dir, { recursive: true, mode: 0o700 });
+  const stat = await lstat(dir);
+  if (!stat.isDirectory() || (stat.mode & 0o077) !== 0)
+    throw new Error('Lease directory must be a private directory with mode 0700');
+}
+function resolveLeaseDir(path: string, leaseDir?: string): string {
+  const explicit = leaseDir?.trim();
+  if (explicit) return resolve(explicit);
+  const envDir = process.env.SIFT_LEASE_DIR?.trim();
+  if (envDir) return resolve(envDir);
+  return join(dirname(path), 'leases');
+}
 async function savedLease(path: string): Promise<Lease> {
   const stat = await lstat(path);
   if (!stat.isFile() || stat.mode & 0o077)
@@ -65,8 +86,8 @@ export class SiftClient {
     )
       throw new Error('Use HTTPS or a loopback HTTP endpoint without URL credentials');
   }
-  static async fromFile(path: string) {
-    return new SiftClient(await readCredentials(path), join(dirname(path), 'leases'));
+  static async fromFile(path: string, leaseDir?: string) {
+    return new SiftClient(await readCredentials(path), resolveLeaseDir(path, leaseDir));
   }
   private async request(path: string, body?: unknown, key?: string): Promise<unknown> {
     const response = await fetch(new URL(path, this.config.apiUrl), {
@@ -118,7 +139,7 @@ export class SiftClient {
     );
     const candidatePath = (id: string) => `${leasePath}.${id}.candidate.json`;
     if (name === 'work.claim') {
-      await mkdir(this.leaseDir, { recursive: true, mode: 0o700 });
+      await ensureLeaseDir(this.leaseDir);
       // Existing attempt paths remain readable so historical keys retain their secret.
       const legacyAttempt = join(
         this.leaseDir,
@@ -163,7 +184,7 @@ export class SiftClient {
         'work.artifacts.add',
       ].includes(name)
     ) {
-      await mkdir(this.leaseDir, { recursive: true, mode: 0o700 });
+      await ensureLeaseDir(this.leaseDir);
       const bindingPath = join(
         this.leaseDir,
         hash(`${this.config.apiUrl}:${this.config.principalId}:${args.id}:${name}:${key}`) +

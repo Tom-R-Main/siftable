@@ -5,6 +5,7 @@ import { ListToolsRequestSchema, CallToolRequestSchema } from '@modelcontextprot
 import { z } from 'zod';
 import { operations, type Operation } from '@siftable/contracts';
 import { SiftClient } from '@siftable/client';
+import { formatToolError, formatToolResultText, toolAnnotations } from './format.js';
 const config = process.env.SIFT_CONFIG;
 if (!config) throw new Error('SIFT_CONFIG must name a protected credential file');
 const client = await SiftClient.fromFile(config);
@@ -21,7 +22,8 @@ const server = new Server(
 );
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: (await visible()).map((t) => {
-    const op = operations[t.name as Operation];
+    const name = t.name as Operation;
+    const op = operations[name];
     const schema = z.toJSONSchema(op.input, { io: 'input' }) as {
       properties: Record<string, unknown>;
       required?: string[];
@@ -38,6 +40,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       name: t.name.replaceAll('.', '_'),
       description: `${t.name}. ${op.write ? 'Writes durable state.' : 'Reads state.'}${op.operator ? ' Operator credential required.' : ''}`,
       inputSchema: schema,
+      annotations: toolAnnotations(name),
     };
   }),
 }));
@@ -47,18 +50,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       (t) => t.name.replaceAll('.', '_') === request.params.name,
     );
     if (!found) throw new Error('Tool is unavailable for this module profile or credential');
+    const operation = found.name as Operation;
     const { requestKey, ...args } = request.params.arguments ?? {};
     const data = await client.invoke(
-      found.name as Operation,
+      operation,
       args,
       typeof requestKey === 'string' ? requestKey : undefined,
     );
-    return { content: [{ type: 'text', text: JSON.stringify(data) }], structuredContent: { data } };
-  } catch (e) {
     return {
-      isError: true,
-      content: [{ type: 'text', text: e instanceof Error ? e.message : 'Operation failed' }],
+      content: [{ type: 'text', text: formatToolResultText(operation, data) }],
+      structuredContent: { data },
     };
+  } catch (e) {
+    return formatToolError(e);
   }
 });
 await server.connect(new StdioServerTransport());
