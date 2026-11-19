@@ -115,7 +115,14 @@ export class SiftClient {
     const result = z
       .object({
         data: z.unknown().optional(),
-        error: z.object({ code: z.string(), message: z.string() }).optional(),
+        error: z
+          .object({
+            code: z.string(),
+            message: z.string(),
+            suggestions: z.array(z.string()).optional(),
+            details: z.record(z.string(), z.unknown()).optional(),
+          })
+          .optional(),
       })
       .parse(await response.json());
     if (!response.ok)
@@ -123,6 +130,8 @@ export class SiftClient {
         response.status,
         result.error?.code ?? 'http_error',
         result.error?.message ?? 'Request failed',
+        result.error?.suggestions,
+        result.error?.details,
       );
     return result.data;
   }
@@ -181,6 +190,55 @@ export class SiftClient {
         claimSecret: prepared.claimSecret,
       });
       input.claimSecret = prepared.claimSecret;
+      return this.request(`/v1/operations/${name}`, input, key);
+    }
+    if (name === 'work.fork' && input.claimSecret === undefined && input.epoch === undefined) {
+      const bindingPath = join(
+        this.leaseDir,
+        hash(`${this.config.apiUrl}:${this.config.principalId}:${args.id}:${name}:${key}`) +
+          '.mutation.json',
+      );
+      let bound: Lease | undefined;
+      try {
+        bound = await savedLease(bindingPath);
+      } catch (e) {
+        if (!missing(e)) throw e;
+      }
+      if (bound?.epoch) {
+        input.claimSecret = bound.claimSecret;
+        input.epoch = bound.epoch;
+      } else {
+        try {
+          const current = z
+            .object({
+              epoch: z.number().int().positive(),
+              claimId: z.string().regex(/^[a-f0-9]{64}$/),
+            })
+            .parse(await this.request('/v1/operations/work.lease', { id: args.id }));
+          let candidate: Lease | undefined;
+          try {
+            candidate = await savedLease(candidatePath(current.claimId));
+          } catch (e) {
+            if (!missing(e)) throw e;
+            try {
+              candidate = await savedLease(leasePath);
+            } catch (legacyErr) {
+              if (!missing(legacyErr)) throw legacyErr;
+            }
+          }
+          if (candidate && claimId(candidate.claimSecret) === current.claimId) {
+            await ensureLeaseDir(this.leaseDir);
+            const lease = await publishLease(bindingPath, {
+              claimSecret: candidate.claimSecret,
+              epoch: current.epoch,
+            });
+            input.claimSecret = lease.claimSecret;
+            input.epoch = lease.epoch;
+          }
+        } catch (e) {
+          if (!(e instanceof SiftError && ['stale_lease', 'not_found'].includes(e.code))) throw e;
+        }
+      }
       return this.request(`/v1/operations/${name}`, input, key);
     }
     if (

@@ -268,6 +268,8 @@ export const operations = {
           )
           .min(1)
           .max(25),
+        claimSecret: z.string().min(32).max(256).optional(),
+        epoch: z.number().int().positive().optional(),
       })
       .strict(),
   ),
@@ -424,6 +426,7 @@ export class SiftError extends Error {
     public code: string,
     message: string,
     public suggestions?: string[],
+    public details?: Record<string, unknown>,
   ) {
     super(message);
   }

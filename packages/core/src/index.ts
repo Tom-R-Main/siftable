@@ -18,6 +18,23 @@ export * from './backup.js';
 export { deriveVerificationCoverage } from './verificationCoverage.js';
 export type { VerificationCoverage, VerificationStep } from './verificationTypes.js';
 export {
+  dependencyCycleError,
+  deriveAgentWorkClaimability,
+  deriveWorkClaimability,
+  invalidTransitionError,
+  notClaimableError,
+  revisionConflictError,
+  staleLeaseError,
+  toPublicClaimability,
+  type DerivedWorkClaimability,
+  type WorkBlockedBy,
+  type WorkClaimability,
+  type WorkClaimabilityContext,
+  type WorkClaimabilityNextAction,
+  type WorkClaimabilityState,
+  type WorkDependencyStateInput,
+} from './claimability.js';
+export {
   buildWorkGraph,
   deriveWorkUiState,
   type WorkGraphCounts,

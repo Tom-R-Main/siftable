@@ -2395,6 +2395,287 @@ test('standalone headless acceptance on real PostgreSQL and subprocess clients',
         assert.equal(inspectedRoot.evidence.length, 1);
       },
     );
+    await t.test(
+      'rich claimability diagnostics, structured 409 recovery payloads, and atomic active-lease work.fork work on PostgreSQL 17',
+      async () => {
+        const claimProject = await callCli(f, 'projects.create', {
+          title: 'Claimability and active-lease fork project',
+        });
+        const activeParent = await createWork(f.owner, {
+          title: 'Active lease fork parent',
+          projectId: claimProject.id,
+        });
+        assert.equal(activeParent.claimable, true);
+        assert.equal(activeParent.claimability.state, 'ready');
+        assert.equal(activeParent.claimability.nextAction, 'work.claim');
+        assert.deepEqual(activeParent.claimability.blockedBy, []);
+
+        // Claim and start parent as agent A, recording pre-fork evidence on plan v1.
+        await invoke(a.client, 'work.claim', { id: activeParent.id });
+        const runningParent = await invoke(a.client, 'work.start', { id: activeParent.id });
+        assert.equal(runningParent.claimable, false);
+        assert.equal(runningParent.claimability.state, 'leased');
+        assert.equal(runningParent.claimability.nextAction, 'wait_for_lease_or_reclaim');
+        assert.deepEqual(runningParent.claimability.blockedBy, []);
+
+        await invoke(a.client, 'work.evidence', {
+          id: activeParent.id,
+          planVersion: 1,
+          stepId: activeParent.plan.steps[0].id,
+          attemptId: 'active-pre-fork',
+          outcome: 'passed',
+          output: 'Passed before active-lease fork',
+          provenance: 'fixture://active-pre-fork',
+        });
+        const runningInspected = await invoke(f.owner, 'work.get', { id: activeParent.id });
+        assert.equal(runningInspected.claimability.state, 'leased');
+
+        // Verify work.list and work.graph both surface claimability diagnostics.
+        const listed = await invoke(a.client, 'work.list', { limit: 100, offset: 0 });
+        const listedParent = listed.find((item) => item.id === activeParent.id);
+        assert.equal(listedParent.claimable, false);
+        assert.equal(listedParent.claimability.state, 'leased');
+
+        const activeGraph = await invoke(a.client, 'work.graph', { projectId: claimProject.id });
+        const activeGraphNode = activeGraph.nodes.find((n) => n.id === activeParent.id);
+        assert.equal(activeGraphNode.claimable, false);
+        assert.equal(activeGraphNode.claimability.state, 'leased');
+
+        // Non-holder (agent B) attempting work.fork on leased item gets 409 stale_lease with hints.
+        await assert.rejects(
+          () =>
+            invoke(b.client, 'work.fork', {
+              id: activeParent.id,
+              revision: runningInspected.revision,
+              reason: 'Unauthorized non-holder fork attempt',
+              branches: [{ title: 'Unauthorized branch' }],
+            }),
+          (err) => {
+            assert.equal(err.status, 409);
+            assert.equal(err.code, 'stale_lease');
+            assert.ok(Array.isArray(err.suggestions) && err.suggestions.length > 0);
+            assert.equal(err.details?.workId, activeParent.id);
+            assert.equal(err.details?.status, 'running');
+            assert.equal('claimSecret' in (err.details ?? {}), false);
+            return true;
+          },
+        );
+
+        // Active lease holder with stale revision gets structured 409 revision_conflict.
+        await assert.rejects(
+          () =>
+            invoke(a.client, 'work.fork', {
+              id: activeParent.id,
+              revision: runningInspected.revision - 1,
+              reason: 'Stale revision active-lease fork',
+              branches: [{ title: 'Should not create' }],
+            }),
+          (err) => {
+            assert.equal(err.status, 409);
+            assert.equal(err.code, 'revision_conflict');
+            assert.ok(Array.isArray(err.suggestions) && err.suggestions.length > 0);
+            assert.equal(err.details?.expectedRevision, runningInspected.revision - 1);
+            assert.equal(err.details?.actualRevision, runningInspected.revision);
+            return true;
+          },
+        );
+
+        // Structured 409 on work.update and work.dependencies.set while actively leased.
+        await assert.rejects(
+          () =>
+            invoke(f.owner, 'work.update', {
+              id: activeParent.id,
+              revision: runningInspected.revision,
+              title: 'Cannot edit while running',
+              description: 'Blocked by active lease',
+              reason: 'Probe active edit 409',
+            }),
+          (err) => {
+            assert.equal(err.status, 409);
+            assert.equal(err.code, 'invalid_transition');
+            assert.ok(Array.isArray(err.suggestions) && err.suggestions.length > 0);
+            assert.equal(err.details?.claimability?.state, 'leased');
+            return true;
+          },
+        );
+
+        // Active lease holder calls work.fork atomically (client auto-attaches saved lease custody).
+        const activeForkKey = 'active-lease-fork-atomic-1';
+        const activeFork = await invoke(
+          a.client,
+          'work.fork',
+          {
+            id: activeParent.id,
+            revision: runningInspected.revision,
+            reason: 'Split active work atomically into two branches',
+            branches: [
+              { title: 'Active Branch 1', description: 'Will fail to test dependency_failed' },
+              { title: 'Active Branch 2', description: 'Will test claimed-state active fork' },
+            ],
+          },
+          activeForkKey,
+        );
+        assert.equal(activeFork.parent.status, 'queued');
+        assert.equal(activeFork.parent.expires_at, null);
+        assert.equal(activeFork.parent.claimable, false);
+        assert.equal(activeFork.parent.plan_version, 2);
+        assert.equal(activeFork.parent.revision, runningInspected.revision + 1);
+        assert.equal(activeFork.parent.coverage.state, 'unverified');
+        assert.equal(activeFork.parent.claimability.state, 'waiting');
+        assert.equal(activeFork.parent.claimability.nextAction, 'wait_for_dependencies');
+        assert.equal(activeFork.parent.claimability.blockedBy.length, 2);
+        assert.equal(activeFork.branches.length, 2);
+        for (const branch of activeFork.branches) {
+          assert.equal(branch.claimable, true);
+          assert.equal(branch.claimability.state, 'ready');
+          assert.ok(
+            branch.links.some(
+              (l) => l.relation === 'belongs_to' && l.target_id === claimProject.id,
+            ),
+          );
+        }
+
+        // Idempotent retry with same requestKey replays the exact result after lease release.
+        const activeForkReplay = await invoke(
+          a.client,
+          'work.fork',
+          {
+            id: activeParent.id,
+            revision: runningInspected.revision,
+            reason: 'Split active work atomically into two branches',
+            branches: [
+              { title: 'Active Branch 1', description: 'Will fail to test dependency_failed' },
+              { title: 'Active Branch 2', description: 'Will test claimed-state active fork' },
+            ],
+          },
+          activeForkKey,
+        );
+        assert.deepEqual(activeForkReplay, activeFork);
+
+        // Old lease is released and work.fork history event notes releasedLease: true.
+        await reject(
+          () => invoke(a.client, 'work.heartbeat', { id: activeParent.id }),
+          'stale_lease',
+        );
+        const forkedParentDetail = await invoke(f.owner, 'work.get', { id: activeParent.id });
+        const forkEvent = forkedParentDetail.history.find((e) => e.event === 'work.fork');
+        assert.equal(forkEvent?.detail?.releasedLease, true);
+
+        // Structured 409 revision_conflict on work.dependencies.set.
+        await assert.rejects(
+          () =>
+            invoke(f.owner, 'work.dependencies.set', {
+              id: activeParent.id,
+              revision: forkedParentDetail.revision - 1,
+              dependencies: [],
+              reason: 'Stale revision probe on dependencies.set',
+            }),
+          (err) => {
+            assert.equal(err.status, 409);
+            assert.equal(err.code, 'revision_conflict');
+            assert.equal(err.details?.expectedRevision, forkedParentDetail.revision - 1);
+            assert.equal(err.details?.actualRevision, forkedParentDetail.revision);
+            assert.ok(Array.isArray(err.suggestions) && err.suggestions.length > 0);
+            return true;
+          },
+        );
+
+        // Fail Branch 1 -> parent flips to dependency_failed, and work.claim returns rich 409 not_claimable.
+        const [branch1, branch2] = activeFork.branches;
+        await invoke(a.client, 'work.claim', { id: branch1.id });
+        const failedBranch1 = await invoke(a.client, 'work.fail', {
+          id: branch1.id,
+          reason: 'Synthetic branch failure',
+        });
+        assert.equal(failedBranch1.claimability.state, 'terminal');
+
+        const parentAfterFail = await invoke(f.owner, 'work.get', { id: activeParent.id });
+        assert.equal(parentAfterFail.claimable, false);
+        assert.equal(parentAfterFail.claimability.state, 'dependency_failed');
+        assert.equal(parentAfterFail.claimability.nextAction, 'unblock_or_requeue_predecessor');
+        assert.ok(
+          parentAfterFail.claimability.blockedBy.some(
+            (dep) => dep.workId === branch1.id && dep.status === 'failed',
+          ),
+        );
+        const failGraph = await invoke(a.client, 'work.graph', { projectId: claimProject.id });
+        assert.equal(
+          failGraph.nodes.find((n) => n.id === activeParent.id).claimability.state,
+          'dependency_failed',
+        );
+
+        await assert.rejects(
+          () => invoke(a.client, 'work.claim', { id: activeParent.id }),
+          (err) => {
+            assert.equal(err.status, 409);
+            assert.equal(err.code, 'not_claimable');
+            assert.ok(Array.isArray(err.suggestions) && err.suggestions.length > 0);
+            assert.equal(err.details?.claimability?.state, 'dependency_failed');
+            assert.ok(err.details?.unmetPredecessorIds?.includes(branch1.id));
+            return true;
+          },
+        );
+
+        // Unleased work.fork on a failed item succeeds without lease custody.
+        const failedFork = await invoke(a.client, 'work.fork', {
+          id: branch1.id,
+          revision: failedBranch1.revision,
+          reason: 'Recover failed branch by splitting',
+          branches: [{ title: 'Recovery leaf' }],
+        });
+        assert.equal(failedFork.parent.status, 'queued');
+        assert.equal(failedFork.parent.claimability.state, 'waiting');
+
+        // Active-lease work.fork directly from 'claimed' state (without work.start) also succeeds.
+        const claimedBranch2 = await invoke(b.client, 'work.claim', { id: branch2.id });
+        assert.equal(claimedBranch2.status, 'claimed');
+        const claimedFork = await invoke(b.client, 'work.fork', {
+          id: branch2.id,
+          revision: claimedBranch2.revision,
+          reason: 'Fork directly from claimed lease',
+          branches: [{ title: 'Claimed sub-leaf' }],
+        });
+        assert.equal(claimedFork.parent.status, 'queued');
+        assert.equal(claimedFork.parent.expires_at, null);
+        assert.equal(claimedFork.parent.claimability.state, 'waiting');
+
+        // Expired lease reports lease_expired (claimable: true) and rejects stale-lease work.fork.
+        const expiringItem = await createWork(f.owner, {
+          title: 'Short lease expiry probe',
+          projectId: claimProject.id,
+        });
+        const shortClaim = await invoke(a.client, 'work.claim', {
+          id: expiringItem.id,
+          leaseSeconds: 1,
+        });
+        await new Promise((r) => setTimeout(r, 1100));
+        const expiredView = await invoke(f.owner, 'work.get', { id: expiringItem.id });
+        assert.equal(expiredView.claimable, true);
+        assert.equal(expiredView.claimability.state, 'lease_expired');
+        assert.equal(expiredView.claimability.nextAction, 'work.claim');
+        const expiredGraph = await invoke(a.client, 'work.graph', { projectId: claimProject.id });
+        assert.equal(
+          expiredGraph.nodes.find((n) => n.id === expiringItem.id).claimability.state,
+          'lease_expired',
+        );
+        await assert.rejects(
+          () =>
+            invoke(a.client, 'work.fork', {
+              id: expiringItem.id,
+              revision: shortClaim.revision,
+              reason: 'Expired lease fork must fail',
+              branches: [{ title: 'Should not create on expired lease' }],
+            }),
+          (err) => {
+            assert.equal(err.status, 409);
+            assert.equal(err.code, 'stale_lease');
+            assert.equal(err.details?.leaseExpired, true);
+            assert.ok(Array.isArray(err.suggestions) && err.suggestions.length > 0);
+            return true;
+          },
+        );
+      },
+    );
     await t.test('restart preserves accepted work and idempotency receipts', async () => {
       await stop(f);
       await start(f);
