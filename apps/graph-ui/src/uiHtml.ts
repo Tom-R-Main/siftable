@@ -154,10 +154,10 @@ export function renderGraphUiHtml(): string {
 
   /* Graph Node Card */
   .node-card {
-    position: absolute; width: 276px; min-height: 112px;
+    position: absolute; width: 276px; min-height: 126px;
     background: var(--bg-card); border: 1px solid var(--border);
-    border-radius: var(--radius); padding: 12px 14px 11px;
-    display: flex; flex-direction: column; justify-content: space-between; gap: 10px;
+    border-radius: var(--radius); padding: 11px 14px 10px;
+    display: flex; flex-direction: column; justify-content: space-between; gap: 8px;
     cursor: pointer; transition: border-color 140ms ease, transform 120ms ease, box-shadow 140ms ease;
     box-shadow: 0 6px 20px -10px rgba(0, 0, 0, 0.8);
   }
@@ -216,6 +216,52 @@ export function renderGraphUiHtml(): string {
   }
   .node-meta { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 11px; }
   .unblocks-tag { color: var(--orange); font-weight: 600; white-space: nowrap; }
+  .harness-chips {
+    display: flex; align-items: center; gap: 5px; flex-wrap: nowrap; overflow: hidden;
+  }
+  .harness-chip {
+    display: inline-flex; align-items: center; gap: 4px; max-width: 100%;
+    padding: 2px 7px; border-radius: 6px; font-size: 10.5px; font-weight: 600;
+    font-family: var(--mono); border: 1px solid var(--border);
+    background: var(--bg-pill); color: var(--text-muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .harness-chip.antigravity {
+    background: rgba(168, 85, 247, 0.14); border-color: rgba(168, 85, 247, 0.36); color: #d8b4fe;
+  }
+  .harness-chip.t3-code {
+    background: var(--blue-soft); border-color: rgba(56, 189, 248, 0.38); color: #7dd3fc;
+  }
+  .harness-chip.codex {
+    background: var(--green-soft); border-color: rgba(34, 197, 94, 0.36); color: #86efac;
+  }
+  .harness-chip.claude-code {
+    background: var(--amber-soft); border-color: rgba(245, 158, 11, 0.38); color: #fcd34d;
+  }
+  .harness-chip.cursor {
+    background: rgba(99, 102, 241, 0.16); border-color: rgba(99, 102, 241, 0.42); color: #a5b4fc;
+  }
+  .chip-sub { opacity: 0.78; font-weight: 500; }
+  .drawer-head-actions { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; }
+  .session-item {
+    display: flex; flex-direction: column; gap: 6px;
+    padding: 9px 10px; border-radius: 8px; border: 1px solid var(--border);
+    background: #0b0d12; margin-top: 6px;
+  }
+  .session-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; flex-wrap: wrap; }
+  .session-pills { display: inline-flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+  .session-meta {
+    display: flex; flex-direction: column; gap: 3px;
+    font-family: var(--mono); font-size: 11px; color: var(--text-muted);
+    word-break: break-all;
+  }
+  .session-meta span strong { color: var(--text-dim); font-weight: 500; }
+  .session-link {
+    font-size: 11.5px; font-weight: 600; color: #7dd3fc; text-decoration: none;
+    padding: 2px 7px; border-radius: 6px; border: 1px solid rgba(56, 189, 248, 0.35);
+    background: var(--blue-soft); white-space: nowrap;
+  }
+  .session-link:hover { background: rgba(56, 189, 248, 0.24); }
 
   /* Next & Tasks Views */
   .scroll-pane {
@@ -419,7 +465,10 @@ export function renderGraphUiHtml(): string {
           <div class="drawer-title" id="drawerTitle"></div>
           <div class="drawer-id" id="drawerId"></div>
         </div>
-        <button class="icon-btn" id="closeDrawerBtn">✕</button>
+        <div class="drawer-head-actions">
+          <button class="icon-btn" id="drawerHeaderCopyLink" title="Copy deep link to this work item">Copy Link</button>
+          <button class="icon-btn" id="closeDrawerBtn">✕</button>
+        </div>
       </div>
       <div class="drawer-body" id="drawerBody"></div>
     </aside>
@@ -462,23 +511,37 @@ export function renderGraphUiHtml(): string {
 <script>
 (() => {
   const CARD_W = 276;
-  const CARD_H = 114;
+  const CARD_H = 128;
   const COL_GAP = 42;
   const ROW_GAP = 72;
+  const KNOWN_HARNESSES = new Set([
+    'antigravity',
+    'codex',
+    't3-code',
+    'claude-code',
+    'cursor',
+    'cli',
+    'other',
+  ]);
+  const initialParams = new URLSearchParams(window.location.search);
 
   const state = {
     tab: 'graph',
     mode: 'live',
     graph: null,
     projects: [],
-    selectedRootId: '',
-    selectedProjectId: '',
+    sessionsByWorkId: {},
+    selectedRootId: initialParams.get('rootId') || '',
+    selectedProjectId: initialParams.get('projectId') || '',
     frontierOnly: false,
     selectedWorkId: null,
     selectedDetail: null,
+    selectedSessions: [],
+    pendingDeepLinkWorkId: initialParams.get('workId') || null,
     expandedArtifacts: {},
     activeAction: null,
     fallbackPromptText: '',
+    fallbackLinkText: '',
     autoPoll: true,
     transform: { x: 40, y: 40, scale: 1 },
     hasFittedOnce: false,
@@ -493,6 +556,61 @@ export function renderGraphUiHtml(): string {
       .replaceAll('>', '&gt;')
       .replaceAll('"', '&quot;')
       .replaceAll("'", '&#39;');
+  }
+
+  function syncUrlParams() {
+    if (!window.history || typeof window.history.replaceState !== 'function') return;
+    const url = new URL(window.location.href);
+    if (state.selectedProjectId) url.searchParams.set('projectId', state.selectedProjectId);
+    else url.searchParams.delete('projectId');
+    if (state.selectedRootId) url.searchParams.set('rootId', state.selectedRootId);
+    else url.searchParams.delete('rootId');
+    if (state.selectedWorkId) url.searchParams.set('workId', state.selectedWorkId);
+    else url.searchParams.delete('workId');
+    const qs = url.searchParams.toString();
+    const nextUrl = url.pathname + (qs ? \`?\${qs}\` : '') + url.hash;
+    window.history.replaceState(null, '', nextUrl);
+  }
+
+  function buildWorkDeepLink(id) {
+    const url = new URL(\`\${window.location.origin}/\`);
+    url.searchParams.set('workId', id);
+    return url.toString();
+  }
+
+  function isSafeDeepLink(raw) {
+    if (typeof raw !== 'string' || !raw.trim()) return false;
+    const trimmed = raw.trim();
+    if (trimmed.startsWith('conversation://')) {
+      return /^conversation:\\/\\/[a-zA-Z0-9._:/-]+$/.test(trimmed);
+    }
+    try {
+      const parsed = new URL(trimmed);
+      if (parsed.protocol === 'https:') return Boolean(parsed.hostname);
+      if (parsed.protocol === 'http:') return parsed.hostname === '127.0.0.1';
+      return false;
+    } catch {
+      return false;
+    }
+  }
+
+  function harnessClass(harness) {
+    return KNOWN_HARNESSES.has(harness) ? harness : 'other';
+  }
+
+  function renderHarnessChips(workId) {
+    const sessions = state.sessionsByWorkId[workId] || [];
+    if (!sessions.length) return '';
+    const chips = sessions.slice(0, 2).map((s) => {
+      const cls = harnessClass(s.harness);
+      const sub = s.mode || s.model || '';
+      const subHtml = sub ? \`<span class="chip-sub">· \${esc(sub)}</span>\` : '';
+      return \`<span class="harness-chip \${cls}" title="\${esc(s.harness)}\${s.model ? ' · ' + esc(s.model) : ''}\${s.threadId ? ' (' + esc(s.threadId) + ')' : ''}">\${esc(s.harness)}\${subHtml}</span>\`;
+    });
+    if (sessions.length > 2) {
+      chips.push(\`<span class="harness-chip other">+\${sessions.length - 2}</span>\`);
+    }
+    return \`<div class="harness-chips">\${chips.join('')}</div>\`;
   }
 
   let toastTimer = null;
@@ -530,7 +648,7 @@ export function renderGraphUiHtml(): string {
     if (!c) return \`v\${node.planVersion}\`;
     if (c.state === 'commands_passed') return \`v\${node.planVersion} · passed\`;
     if (c.state === 'failed') return \`v\${node.planVersion} · failed\`;
-    return \`v\${node.planVersion} · \${c.passedRequiredCount}/\${c.requiredCount} steps\`;
+    return \`v\${node.planVersion} · \${c.passed ?? 0}/\${c.required ?? 0} steps\`;
   }
 
   function computeLayout(nodes, edges) {
@@ -609,6 +727,23 @@ export function renderGraphUiHtml(): string {
     const x = Math.max(margin, (vp.clientWidth - layout.width * scale) / 2);
     const y = Math.max(24, (vp.clientHeight - layout.height * scale) / 2);
     state.transform = { x, y, scale };
+    applyTransform();
+  }
+
+  function focusNodeOnCanvas(id) {
+    if (!lastLayout || !id) return;
+    const pos = lastLayout.positions.get(id);
+    const vp = $('viewport');
+    if (!pos || !vp.clientWidth || !vp.clientHeight) return;
+    const scale = Math.max(0.75, Math.min(1.05, state.transform.scale || 1));
+    const drawerOffset = vp.clientWidth > 760 ? 220 : 0;
+    const visibleCenterX = (vp.clientWidth - drawerOffset) / 2;
+    const visibleCenterY = vp.clientHeight / 2;
+    state.transform = {
+      x: visibleCenterX - (pos.x + CARD_W / 2) * scale,
+      y: visibleCenterY - (pos.y + CARD_H / 2) * scale,
+      scale,
+    };
     applyTransform();
   }
 
@@ -703,6 +838,7 @@ export function renderGraphUiHtml(): string {
             <span class="status-pill \${esc(n.uiState)}">\${esc(statusLabel(n))}</span>
           </div>
           <div class="node-title">\${esc(n.title)}</div>
+          \${renderHarnessChips(n.id)}
           <div class="node-footer">
             <span class="node-meta">\${esc(coverageText(n))}\${artBadge}</span>
             \${unblocksHtml}
@@ -890,15 +1026,39 @@ export function renderGraphUiHtml(): string {
     }
   }
 
-  async function openDetail(id) {
+  async function copyWorkLink(id) {
+    if (!id) return;
+    const link = buildWorkDeepLink(id);
+    try {
+      await navigator.clipboard.writeText(link);
+      showToast('Copied work deep link');
+    } catch {
+      state.fallbackLinkText = link;
+      state.activeAction = 'link';
+      if (state.selectedWorkId !== id) {
+        await openDetail(id);
+        state.activeAction = 'link';
+      }
+      renderDrawer();
+      showToast('Clipboard unavailable — copy link below');
+    }
+  }
+
+  async function openDetail(id, opts = {}) {
     if (!id) return;
     state.selectedWorkId = id;
     state.activeAction = null;
+    state.selectedSessions = state.sessionsByWorkId[id] || [];
+    syncUrlParams();
     $('drawer').classList.add('open');
     renderGraph();
+    if (opts.focusCanvas) focusNodeOnCanvas(id);
     try {
       const res = await api(\`/api/work/\${encodeURIComponent(id)}\`);
       state.selectedDetail = res.data;
+      state.selectedSessions = Array.isArray(res.sessions)
+        ? res.sessions
+        : state.sessionsByWorkId[id] || [];
       renderDrawer();
     } catch (err) {
       showToast(err.message);
@@ -1012,6 +1172,50 @@ export function renderGraphUiHtml(): string {
       parts.push(\`<div class="card-box fork-box">
         <div class="card-box-head"><span>Antigravity Agent Prompt</span><button type="button" class="btn" id="cancelActionBtn">Close</button></div>
         <textarea rows="7" readonly style="width:100%;font-family:var(--mono);font-size:11.5px;background:#07080b;border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text)">\${esc(state.fallbackPromptText)}</textarea>
+      </div>\`);
+    } else if (state.activeAction === 'link' && state.fallbackLinkText) {
+      parts.push(\`<div class="card-box fork-box">
+        <div class="card-box-head"><span>Work Deep Link</span><button type="button" class="btn" id="cancelActionBtn">Close</button></div>
+        <input readonly value="\${esc(state.fallbackLinkText)}" style="width:100%;font-family:var(--mono);font-size:11.5px;background:#07080b;border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text)" />
+      </div>\`);
+    }
+
+    // Linked Harness Sessions card
+    const sessions = state.selectedSessions.length
+      ? state.selectedSessions
+      : state.sessionsByWorkId[d.id] || [];
+    if (sessions.length > 0) {
+      const sessionRows = sessions
+        .map((s) => {
+          const cls = harnessClass(s.harness);
+          const safeLink = isSafeDeepLink(s.deepLink);
+          const isExternalHttp = safeLink && !String(s.deepLink).trim().startsWith('conversation://');
+          const linkHtml = safeLink
+            ? \`<a class="session-link" href="\${esc(String(s.deepLink).trim())}"\${isExternalHttp ? ' target="_blank"' : ''} rel="noopener noreferrer">Open ↗</a>\`
+            : '';
+          const metaLines = [
+            \`<span><strong>thread:</strong> \${esc(s.threadId)}</span>\`,
+            s.branch ? \`<span><strong>branch:</strong> \${esc(s.branch)}</span>\` : '',
+            s.worktreePath ? \`<span><strong>worktree:</strong> \${esc(s.worktreePath)}</span>\` : '',
+          ]
+            .filter(Boolean)
+            .join('');
+          return \`<div class="session-item">
+            <div class="session-top">
+              <div class="session-pills">
+                <span class="harness-chip \${cls}">\${esc(s.harness)}</span>
+                \${s.mode ? \`<span class="status-pill">\${esc(s.mode)}</span>\` : ''}
+                \${s.model ? \`<span class="status-pill">\${esc(s.model)}</span>\` : ''}
+              </div>
+              \${linkHtml}
+            </div>
+            <div class="session-meta">\${metaLines}</div>
+          </div>\`;
+        })
+        .join('');
+      parts.push(\`<div class="card-box">
+        <div class="card-box-head"><span>Linked Harness Sessions</span><span>\${sessions.length}</span></div>
+        \${sessionRows}
       </div>\`);
     }
 
@@ -1210,6 +1414,7 @@ export function renderGraphUiHtml(): string {
     state.mode = res.mode;
     state.graph = res.data;
     state.projects = res.projects || [];
+    state.sessionsByWorkId = res.sessionsByWorkId || {};
 
     const chip = $('modeChip');
     chip.classList.toggle('demo', state.mode === 'demo');
@@ -1220,12 +1425,24 @@ export function renderGraphUiHtml(): string {
     renderGraph();
     renderNext();
     renderTasks();
+    if (state.pendingDeepLinkWorkId) {
+      const targetWorkId = state.pendingDeepLinkWorkId;
+      state.pendingDeepLinkWorkId = null;
+      if (state.graph.nodes.some((n) => n.id === targetWorkId)) {
+        await openDetail(targetWorkId, { focusCanvas: true });
+        return;
+      }
+      showToast('Linked work item not found in current view');
+    }
     if (state.selectedWorkId && $('drawer').classList.contains('open') && !state.activeAction) {
       const stillExists = state.graph.nodes.some((n) => n.id === state.selectedWorkId);
       if (stillExists) {
         try {
           const det = await api(\`/api/work/\${encodeURIComponent(state.selectedWorkId)}\`);
           state.selectedDetail = det.data;
+          state.selectedSessions = Array.isArray(det.sessions)
+            ? det.sessions
+            : state.sessionsByWorkId[state.selectedWorkId] || [];
           renderDrawer();
         } catch {}
       }
@@ -1250,12 +1467,14 @@ export function renderGraphUiHtml(): string {
   $('rootSelect').addEventListener('change', (e) => {
     state.selectedRootId = e.target.value;
     state.hasFittedOnce = false;
+    syncUrlParams();
     refresh();
   });
   $('projectSelect').addEventListener('change', (e) => {
     state.selectedProjectId = e.target.value;
     state.selectedRootId = '';
     state.hasFittedOnce = false;
+    syncUrlParams();
     refresh();
   });
   $('frontierOnlyBtn').addEventListener('click', () => {
@@ -1319,10 +1538,16 @@ export function renderGraphUiHtml(): string {
   });
   $('fitBtn').addEventListener('click', () => fitToView(lastLayout));
 
-  // Drawer close
+  // Drawer header actions
+  $('drawerHeaderCopyLink').addEventListener('click', () => {
+    if (state.selectedWorkId) copyWorkLink(state.selectedWorkId);
+  });
   $('closeDrawerBtn').addEventListener('click', () => {
     $('drawer').classList.remove('open');
     state.selectedWorkId = null;
+    state.selectedDetail = null;
+    state.selectedSessions = [];
+    syncUrlParams();
     renderGraph();
   });
 

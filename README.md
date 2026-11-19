@@ -4,6 +4,8 @@ Siftable is a local, PostgreSQL-backed context and work-graph service for accoun
 
 [Quickstart](#quickstart) · [How it works](#how-it-works) · [Graph UI & Antigravity](#graph-ui--antigravity) · [Modules](#modules) · [MCP](#mcp) · [Backup](#backup-and-validation) · [Docs](#docs)
 
+![Siftable Graph UI](docs/assets/graph-ui.png)
+
 ## What you get
 
 - **Dependency-ordered work DAGs**: Inspect ready frontiers and transitive unblocks with `work.graph`, or split a task into 1–25 gated child branches atomically with `work.fork`.

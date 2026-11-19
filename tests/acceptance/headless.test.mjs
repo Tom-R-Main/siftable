@@ -241,9 +241,13 @@ test('standalone headless acceptance on real PostgreSQL and subprocess clients',
           );
           assert.equal(
             (await pool.query('SELECT count(*)::int AS n FROM foundation.migrations')).rows[0].n,
-            12,
+            13,
           );
-          assert.ok((await callCli(legacy, 'modules.list', {})).every((m) => m.version === 2));
+          assert.ok(
+            (await callCli(legacy, 'modules.list', {})).every(
+              (m) => m.version === (m.id === 'projects' ? 3 : 2),
+            ),
+          );
           await cli(['install', '--modules', 'context'], legacy.adminUrl);
           const checksum = (
             await pool.query(
@@ -1534,6 +1538,129 @@ test('standalone headless acceptance on real PostgreSQL and subprocess clients',
       },
     );
     await t.test(
+      'projects.bind and projects.resolve enforce normalization, longest-prefix, remote fallback, soft-delete, and RLS',
+      async () => {
+        const mono = await callCli(f, 'projects.create', {
+          title: 'Bound monorepo project',
+          instructions: 'Top-level repo binding',
+        });
+        const nested = await callCli(f, 'projects.create', {
+          title: 'Bound nested app project',
+          instructions: 'Nested package binding',
+        });
+        const boundMono = await callCli(f, 'projects.bind', {
+          projectId: mono.id,
+          rootPath: '/repos/acme/mono///',
+          gitRemoteUrl: 'https://github.com/Acme/Mono.git',
+          defaultBranch: 'main',
+        });
+        assert.equal(boundMono.projectId, mono.id);
+        assert.equal(boundMono.rootPath, '/repos/acme/mono');
+        assert.equal(boundMono.gitRemoteUrl, 'github.com/acme/mono');
+        assert.equal(boundMono.defaultBranch, 'main');
+
+        // Upsert on same rootPath updates metadata cleanly in place.
+        const reboundMono = await callCli(f, 'projects.bind', {
+          projectId: mono.id,
+          rootPath: '/repos/acme/mono/',
+          gitRemoteUrl: 'git@github.com:Acme/Mono.git',
+          defaultBranch: 'trunk',
+        });
+        assert.equal(reboundMono.id, boundMono.id);
+        assert.equal(reboundMono.gitRemoteUrl, 'github.com/acme/mono');
+        assert.equal(reboundMono.defaultBranch, 'trunk');
+
+        await callCli(f, 'projects.bind', {
+          projectId: nested.id,
+          rootPath: '/repos/acme/mono/apps/web',
+          gitRemoteUrl: 'https://github.com/Acme/Mono.git',
+          defaultBranch: 'main',
+        });
+
+        // Longest-prefix matches nested binding; sibling matches parent; prefix-collision does not match.
+        const resolvedNested = await invoke(a.client, 'projects.resolve', {
+          checkoutPath: '/repos/acme/mono/apps/web/src/app.ts',
+        });
+        assert.equal(resolvedNested.matched, true);
+        assert.equal(resolvedNested.matchKind, 'root_path');
+        assert.equal(resolvedNested.project.id, nested.id);
+
+        const resolvedParent = await invoke(a.client, 'projects.resolve', {
+          checkoutPath: '/repos/acme/mono/packages/core',
+        });
+        assert.equal(resolvedParent.matched, true);
+        assert.equal(resolvedParent.matchKind, 'root_path');
+        assert.equal(resolvedParent.project.id, mono.id);
+
+        const nonMatchingSibling = await invoke(a.client, 'projects.resolve', {
+          checkoutPath: '/repos/acme/mono-fork',
+        });
+        assert.deepEqual(nonMatchingSibling, {
+          matched: false,
+          matchKind: null,
+          project: null,
+          binding: null,
+        });
+
+        // Linked worktree outside bound root resolves via normalized gitRemoteUrl fallback.
+        const resolvedWorktree = await invoke(a.client, 'projects.resolve', {
+          checkoutPath: '/tmp/t3-worktrees/mono-feat-1',
+          gitRemoteUrl: 'ssh://git@github.com:22/ACME/MONO.git',
+        });
+        assert.equal(resolvedWorktree.matched, true);
+        assert.equal(resolvedWorktree.matchKind, 'git_remote');
+        assert.ok([mono.id, nested.id].includes(resolvedWorktree.project.id));
+
+        // Soft-deleted project is excluded from resolve and cannot be bound until restored.
+        await callCli(f, 'projects.delete', {
+          id: nested.id,
+          revision: 1,
+          reason: 'Verify deleted project excluded from resolve',
+        });
+        const afterDelete = await invoke(a.client, 'projects.resolve', {
+          checkoutPath: '/repos/acme/mono/apps/web/src/app.ts',
+        });
+        assert.equal(afterDelete.matched, true);
+        assert.equal(afterDelete.project.id, mono.id);
+        await reject(
+          () =>
+            invoke(f.owner, 'projects.bind', {
+              projectId: nested.id,
+              rootPath: '/repos/acme/deleted',
+            }),
+          'not_found',
+        );
+        await callCli(f, 'projects.restore', {
+          id: nested.id,
+          revision: 2,
+          reason: 'Restore bound project',
+        });
+        const afterRestore = await invoke(a.client, 'projects.resolve', {
+          checkoutPath: '/repos/acme/mono/apps/web/src/app.ts',
+        });
+        assert.equal(afterRestore.matched, true);
+        assert.equal(afterRestore.project.id, nested.id);
+
+        // RLS isolates bindings across scopes.
+        const otherScope = await agent(f, 'bind_other_scope', ['projects:read', 'projects:write'], {
+          scopeId: randomUUID(),
+        });
+        const crossScope = await invoke(otherScope.client, 'projects.resolve', {
+          checkoutPath: '/repos/acme/mono',
+          gitRemoteUrl: 'https://github.com/acme/mono.git',
+        });
+        assert.equal(crossScope.matched, false);
+        await reject(
+          () =>
+            invoke(otherScope.client, 'projects.bind', {
+              projectId: mono.id,
+              rootPath: '/repos/acme/mono',
+            }),
+          'not_found',
+        );
+      },
+    );
+    await t.test(
       'native backup restores exact records, schemas and receipts; corruption and overwrite are refused',
       async () => {
         const active = await createWork(f.owner);
@@ -1604,6 +1731,12 @@ test('standalone headless acceptance on real PostgreSQL and subprocess clients',
           (await callCli(recovered, 'objects.list', { type: 'research.paper' })).length >= 2,
         );
         assert.equal((await callCli(recovered, 'notes.get', { id: note.id })).revision, 2);
+        const restoredBinding = await callCli(recovered, 'projects.resolve', {
+          checkoutPath: '/repos/acme/mono/apps/web/src/app.ts',
+        });
+        assert.equal(restoredBinding.matched, true);
+        assert.equal(restoredBinding.matchKind, 'root_path');
+        assert.equal(restoredBinding.binding.rootPath, '/repos/acme/mono/apps/web');
         await callCli(recovered, 'notes.create', {
           title: 'After recovery',
           body: 'Proves sequence and grants continue',

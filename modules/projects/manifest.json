@@ -1,12 +1,13 @@
 {
   "id": "projects",
-  "version": 2,
+  "version": 3,
   "requires": [
     "foundation"
   ],
   "migration": "001.sql",
   "migrations": [
     "001.sql",
-    "002.sql"
+    "002.sql",
+    "003.sql"
   ]
 }
