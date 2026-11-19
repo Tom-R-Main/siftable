@@ -1,0 +1,59 @@
+{
+  "type": "harness.session",
+  "version": 1,
+  "schema": {
+    "type": "object",
+    "title": "Harness Session",
+    "description": "Correlates an external coding harness thread or session with a Siftable work item without coupling core to any runner.",
+    "properties": {
+      "harness": {
+        "type": "string",
+        "enum": ["antigravity", "codex", "t3-code", "claude-code", "cursor", "cli", "other"],
+        "description": "External agent harness or runner name."
+      },
+      "workId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128,
+        "description": "Siftable work item UUID associated with this session."
+      },
+      "threadId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 256,
+        "description": "Runner-local thread, conversation, or session identifier."
+      },
+      "model": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128,
+        "description": "Optional model identifier used in the session."
+      },
+      "mode": {
+        "type": "string",
+        "enum": ["discuss", "build", "review"],
+        "description": "Optional session execution mode."
+      },
+      "branch": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 256,
+        "description": "Optional git branch associated with the session."
+      },
+      "worktreePath": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 1024,
+        "description": "Optional local git worktree path for the session."
+      },
+      "deepLink": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 2048,
+        "description": "Optional deep link back to the external harness session."
+      }
+    },
+    "required": ["harness", "workId", "threadId"],
+    "additionalProperties": false
+  }
+}

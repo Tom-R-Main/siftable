@@ -8,6 +8,23 @@ import {
   type WorkGraphResult,
 } from '@siftable/core';
 
+export type HarnessKind =
+  'antigravity' | 'codex' | 't3-code' | 'claude-code' | 'cursor' | 'cli' | 'other';
+
+export type HarnessSessionMode = 'discuss' | 'build' | 'review';
+
+export interface HarnessSession {
+  id: string;
+  harness: HarnessKind;
+  workId: string;
+  threadId: string;
+  model?: string;
+  mode?: HarnessSessionMode;
+  branch?: string;
+  worktreePath?: string;
+  deepLink?: string;
+}
+
 export interface DemoWorkDetail {
   id: string;
   revision: number;
@@ -83,6 +100,7 @@ const sha = (s: string) => createHash('sha256').update(s).digest('hex');
 export class DemoWorkStore {
   private items = new Map<string, DemoItem>();
   private deps: DemoDep[] = [];
+  private sessions: HarnessSession[] = [];
   private seq = 1;
 
   constructor() {
@@ -317,6 +335,55 @@ export class DemoWorkStore {
     });
     this.addDep(r2, r2a);
     this.addDep(r2, r2b);
+
+    this.sessions = [
+      {
+        id: '30000000-0000-4000-8000-000000000001',
+        harness: 'antigravity',
+        workId: l1,
+        threadId: '94884d9b-6c9e-4990-a4ca-d0fcda081ccc',
+        model: 'gemini-3.1-pro',
+        mode: 'review',
+        branch: 'feat/work-graph-core',
+        worktreePath: '/workspace/siftable-wt/work-graph-core',
+        deepLink: 'conversation://94884d9b-6c9e-4990-a4ca-d0fcda081ccc',
+      },
+      {
+        id: '30000000-0000-4000-8000-000000000002',
+        harness: 'codex',
+        workId: l2,
+        threadId: 'codex-thread-9f2a1c',
+        model: 'gpt-5.3-codex',
+        mode: 'build',
+        branch: 'feat/work-graph-sql',
+        worktreePath: '/workspace/siftable-wt/work-graph-sql',
+        deepLink: 'https://chatgpt.com/codex/tasks/task_9f2a1c',
+      },
+      {
+        id: '30000000-0000-4000-8000-000000000003',
+        harness: 't3-code',
+        workId: l4,
+        threadId: 't3_thr_01jq8x4k2m',
+        model: 'claude-sonnet-4-6',
+        mode: 'build',
+        branch: 'feat/drawer-artifacts',
+        worktreePath: '/workspace/siftable-wt/drawer-artifacts',
+        deepLink: 'http://127.0.0.1:3773/threads/t3_thr_01jq8x4k2m',
+      },
+    ];
+  }
+
+  sessionsByWorkId(allowedWorkIds?: Set<string>): Record<string, HarnessSession[]> {
+    const grouped: Record<string, HarnessSession[]> = {};
+    for (const session of this.sessions) {
+      if (allowedWorkIds && !allowedWorkIds.has(session.workId)) continue;
+      (grouped[session.workId] ??= []).push({ ...session });
+    }
+    return grouped;
+  }
+
+  sessionsForWork(workId: string): HarnessSession[] {
+    return this.sessions.filter((s) => s.workId === workId).map((s) => ({ ...s }));
   }
 
   private coverageOf(item: DemoItem) {

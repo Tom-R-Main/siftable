@@ -6,8 +6,60 @@ import express from 'express';
 import { z, ZodError } from 'zod';
 import { SiftClient } from '@siftable/client';
 import { SiftError } from '@siftable/contracts';
-import { DemoWorkStore } from './demoStore.js';
+import { DemoWorkStore, type HarnessSession } from './demoStore.js';
 import { renderGraphUiHtml } from './uiHtml.js';
+
+const harnessSessionDataSchema = z.object({
+  harness: z.enum(['antigravity', 'codex', 't3-code', 'claude-code', 'cursor', 'cli', 'other']),
+  workId: z.string().min(1).max(128),
+  threadId: z.string().min(1).max(256),
+  model: z.string().min(1).max(128).optional(),
+  mode: z.enum(['discuss', 'build', 'review']).optional(),
+  branch: z.string().min(1).max(256).optional(),
+  worktreePath: z.string().min(1).max(1024).optional(),
+  deepLink: z.string().min(1).max(2048).optional(),
+});
+
+function groupSessionsByWorkId(
+  sessions: HarnessSession[],
+  allowedWorkIds?: Set<string>,
+): Record<string, HarnessSession[]> {
+  const grouped: Record<string, HarnessSession[]> = {};
+  for (const session of sessions) {
+    if (allowedWorkIds && !allowedWorkIds.has(session.workId)) continue;
+    (grouped[session.workId] ??= []).push(session);
+  }
+  return grouped;
+}
+
+async function fetchHarnessSessions(c: SiftClient): Promise<HarnessSession[]> {
+  const sessions: HarnessSession[] = [];
+  const pageSize = 100;
+  const maxPages = 5;
+  try {
+    for (let page = 0; page < maxPages; page += 1) {
+      const rows = await c.invoke('objects.list', {
+        type: 'harness.session',
+        limit: pageSize,
+        offset: page * pageSize,
+      });
+      if (!Array.isArray(rows) || rows.length === 0) break;
+      for (const row of rows) {
+        if (!row || typeof row !== 'object') continue;
+        const record = row as { id?: unknown; data?: unknown };
+        if (typeof record.id !== 'string' || !record.id) continue;
+        const parsed = harnessSessionDataSchema.safeParse(record.data);
+        if (parsed.success) {
+          sessions.push({ id: record.id, ...parsed.data });
+        }
+      }
+      if (rows.length < pageSize) break;
+    }
+  } catch {
+    return [];
+  }
+  return sessions;
+}
 
 const createBody = z
   .object({
@@ -166,24 +218,56 @@ export async function startGraphUiServer(options: GraphUiOptions = {}) {
         } catch {
           projects = [];
         }
-        return { graph, projects };
+        const graphNodes =
+          graph && typeof graph === 'object' && 'nodes' in graph && Array.isArray(graph.nodes)
+            ? (graph.nodes as { id?: unknown }[])
+            : [];
+        const allowedWorkIds = new Set(
+          graphNodes
+            .map((node) => (typeof node.id === 'string' ? node.id : null))
+            .filter((id): id is string => id !== null),
+        );
+        const sessions = await fetchHarnessSessions(c);
+        const sessionsByWorkId = groupSessionsByWorkId(sessions, allowedWorkIds);
+        return { graph, projects, sessionsByWorkId };
       },
-      () => ({ graph: demo.graph(rootId), projects: [] }),
+      () => {
+        const graph = demo.graph(rootId);
+        const allowedWorkIds = new Set(graph.nodes.map((node) => node.id));
+        return {
+          graph,
+          projects: [],
+          sessionsByWorkId: demo.sessionsByWorkId(allowedWorkIds),
+        };
+      },
     );
-    res.json({ mode: result.mode, data: result.data.graph, projects: result.data.projects });
+    res.json({
+      mode: result.mode,
+      data: result.data.graph,
+      projects: result.data.projects,
+      sessionsByWorkId: result.data.sessionsByWorkId,
+    });
   });
 
   app.get('/api/work/:id', async (req, res) => {
     const workId = z.uuid().parse(req.params.id);
     const result = await withMode(
-      (c) => c.invoke('work.get', { id: workId }),
+      async (c) => {
+        const work = await c.invoke('work.get', { id: workId });
+        const sessions = (await fetchHarnessSessions(c)).filter((s) => s.workId === workId);
+        return { work, sessions };
+      },
       () => {
         const found = demo.getWork(workId);
         if (!found) throw new SiftError(404, 'not_found', 'Work item not found');
-        return found;
+        return { work: found, sessions: demo.sessionsForWork(workId) };
       },
     );
-    res.json(result);
+    res.json({
+      mode: result.mode,
+      data: result.data.work,
+      sessions: result.data.sessions,
+    });
   });
 
   app.get('/api/work/:id/artifacts/:artifactId', async (req, res) => {
