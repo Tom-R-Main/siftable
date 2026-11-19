@@ -14,6 +14,7 @@ export {
   type GitCheckoutKind,
   type ProjectBindingCandidate,
 } from './gitCheckout.js';
+export { inspectCodeMemoryPaths, type CodeMemoryPathInspection } from './codeMemoryStale.js';
 const configSchema = z
   .object({
     apiUrl: z.url(),

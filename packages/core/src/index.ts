@@ -10,11 +10,52 @@ import {
 import { authenticate, digest, transaction, manifests } from './database.js';
 import { enabled, fail } from './helpers.js';
 import { findInlineAgentWorkSecret } from './secretPolicy.js';
+import { sanitizeReadPayload } from './readSanitizer.js';
 import { workOperation } from './work.js';
 import { contentOperation } from './content.js';
 import { extensionOperation } from './extensions.js';
+import { notifyDomainEvent } from './events.js';
+import { linksGraph } from './linksGraph.js';
+import { memoryOperation } from './memory.js';
 export * from './database.js';
 export * from './backup.js';
+export {
+  SIFTABLE_EVENTS_CHANNEL,
+  isDomainEventVisibleToPrincipal,
+  notifyDomainEvent,
+  parseDomainEventPayload,
+  subscribeDomainEvents,
+  type DomainEvent,
+  type DomainEventInput,
+} from './events.js';
+export {
+  buildBoundedLinksGraph,
+  linksGraph,
+  type LinksGraphEdge,
+  type LinksGraphInput,
+  type LinksGraphNode,
+  type LinksGraphResult,
+  type RawEntityRecord,
+  type RawLinkRecord,
+} from './linksGraph.js';
+export { emptyTaskWorkSummary, summarizeTaskWork, type TaskWorkSummary } from './content.js';
+export {
+  computeFactHash,
+  DEFAULT_MEMORY_SEARCH_STATUSES,
+  evaluateMemoryStaleness,
+  isValidSourceCommit,
+  LIFECYCLE_BOOST,
+  lifecycleBoost,
+  looksLikeRawCodeDump,
+  normalizeMemoryPath,
+  pathProximityBoost,
+  type DetectStaleResult,
+  type MemoryEntryRecord,
+  type MemoryEventRecord,
+  type MemorySearchItem,
+  type MemorySearchResult,
+  type StaleMemoryEntry,
+} from './memory.js';
 export { deriveVerificationCoverage } from './verificationCoverage.js';
 export type { VerificationCoverage, VerificationStep } from './verificationTypes.js';
 export {
@@ -45,8 +86,22 @@ export {
   type WorkGraphNodeInput,
   type WorkGraphResult,
   type WorkGraphRootSummary,
+  type WorkPriority,
   type WorkUiState,
 } from './workGraph.js';
+export {
+  sanitizeReadPayload,
+  sanitizeReadText,
+  type SanitizedReadTextResult,
+} from './readSanitizer.js';
+export {
+  computeWorkUpdateDiff,
+  type WorkUpdateDiff,
+  type WorkUpdateDiffInput,
+  type WorkUpdateField,
+  type WorkUpdatePatch,
+  type WorkUpdateStep,
+} from './work.js';
 export async function catalog(pool: Pool, token: string, profile?: string[]) {
   const principal = await authenticate(pool, token);
   const installed = await pool.query<{ id: string }>(
@@ -90,6 +145,10 @@ async function foundationOperation(
             ).rows
           : [],
     };
+  }
+  if (name === 'links.graph') {
+    const a = operations[name].input.parse(input);
+    return linksGraph(c, a);
   }
   if (name === 'modules.set') {
     const a = operations[name].input.parse(input);
@@ -143,10 +202,19 @@ export async function execute(
   const args = contract.input.parse(input);
   const scrub = { ...args } as Record<string, unknown>;
   delete scrub.claimSecret;
+  if (contract.module === 'memory') {
+    // Path-keyed maps (e.g. packages/core/src/secretPolicy.ts) should scan values/strings, not treat file paths as secret property names.
+    if (scrub.fileHashes && typeof scrub.fileHashes === 'object') {
+      scrub.fileHashes = Object.entries(scrub.fileHashes as Record<string, unknown>);
+    }
+    if (scrub.pathCommits && typeof scrub.pathCommits === 'object') {
+      scrub.pathCommits = Object.entries(scrub.pathCommits as Record<string, unknown>);
+    }
+  }
   if (findInlineAgentWorkSecret(scrub))
     fail(
       400,
-      'inline_secret',
+      contract.module === 'memory' ? 'secret_detected' : 'inline_secret',
       'Input appears to contain credential material; use a reference instead',
     );
   if (contract.write && (!idempotencyKey || !idempotencyKey.trim() || idempotencyKey.length > 128))
@@ -188,7 +256,9 @@ export async function execute(
           ? await workOperation(c, p, operation, args)
           : contract.module === 'extensions'
             ? await extensionOperation(c, p, operation, args)
-            : await contentOperation(c, p, operation, args);
+            : contract.module === 'memory'
+              ? await memoryOperation(c, p, operation, args)
+              : await contentOperation(c, p, operation, args);
     if (contract.write) {
       await c.query(
         'INSERT INTO foundation.receipts(principal_id,owner_id,scope_id,operation,key,fingerprint,result) VALUES($1,$2,$3,$4,$5,$6,$7)',
@@ -206,7 +276,13 @@ export async function execute(
         'INSERT INTO foundation.audit(owner_id,scope_id,principal_id,operation) VALUES($1,$2,$3,$4)',
         [p.ownerId, p.scopeId, p.id, operation],
       );
+      await notifyDomainEvent(c, {
+        operation,
+        module: contract.module,
+        ownerId: p.ownerId,
+        scopeId: p.scopeId,
+      });
     }
-    return result;
+    return !contract.write && p.role === 'agent' ? sanitizeReadPayload(result) : result;
   });
 }

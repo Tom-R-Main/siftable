@@ -57,6 +57,104 @@ export interface ContextSearchResult {
   items: ContextSearchItem[];
 }
 
+export interface TaskWorkSummary {
+  total: number;
+  done: number;
+  active: number;
+  ready: number;
+  needsReview: number;
+  blocked: number;
+  failed: number;
+}
+
+export function emptyTaskWorkSummary(): TaskWorkSummary {
+  return {
+    total: 0,
+    done: 0,
+    active: 0,
+    ready: 0,
+    needsReview: 0,
+    blocked: 0,
+    failed: 0,
+  };
+}
+
+export function summarizeTaskWork(
+  items: readonly { status: string; deleted?: boolean }[],
+): TaskWorkSummary {
+  const summary = emptyTaskWorkSummary();
+  for (const item of items) {
+    if (item.deleted) continue;
+    summary.total += 1;
+    switch (item.status) {
+      case 'done':
+        summary.done += 1;
+        break;
+      case 'claimed':
+      case 'running':
+        summary.active += 1;
+        break;
+      case 'queued':
+        summary.ready += 1;
+        break;
+      case 'needs_review':
+        summary.needsReview += 1;
+        break;
+      case 'blocked':
+        summary.blocked += 1;
+        break;
+      case 'failed':
+        summary.failed += 1;
+        break;
+      default:
+        break;
+    }
+  }
+  return summary;
+}
+
+async function loadTaskWorkSummaries(
+  c: PoolClient,
+  taskIds: readonly string[],
+): Promise<Map<string, TaskWorkSummary>> {
+  const summaries = new Map<string, TaskWorkSummary>();
+  if (taskIds.length === 0) return summaries;
+
+  const workModule = (
+    await c.query<{ enabled: boolean }>("SELECT enabled FROM foundation.modules WHERE id='work'")
+  ).rows[0];
+  if (!workModule?.enabled) return summaries;
+
+  const workTable = (
+    await c.query<{ name: string | null }>("SELECT to_regclass('work.items') AS name")
+  ).rows[0];
+  if (!workTable?.name) return summaries;
+
+  const linked = (
+    await c.query<{ task_id: string; status: string }>(
+      `SELECT l.target_id AS task_id, w.status
+       FROM foundation.links l
+       JOIN work.items w ON w.id = l.source_id
+       JOIN foundation.entities e ON e.id = w.id
+       WHERE l.relation = 'implements'
+         AND l.target_id = ANY($1::uuid[])
+         AND e.deleted_at IS NULL`,
+      [taskIds],
+    )
+  ).rows;
+
+  const grouped = new Map<string, { status: string }[]>();
+  for (const row of linked) {
+    const list = grouped.get(row.task_id) ?? [];
+    list.push({ status: row.status });
+    grouped.set(row.task_id, list);
+  }
+  for (const [taskId, items] of grouped.entries()) {
+    summaries.set(taskId, summarizeTaskWork(items));
+  }
+  return summaries;
+}
+
 export function sanitizeSearchTerms(rawQuery: string): string[] {
   const matches = rawQuery.match(/[\p{L}\p{N}]+/gu) ?? [];
   const seen = new Set<string>();
@@ -170,7 +268,7 @@ export async function contentOperation(
     const a = operations[name].input.parse(input);
     const table = name === 'tasks.list' ? 'planning.tasks' : 'context.notes';
     const projectId = 'projectId' in a ? a.projectId : undefined;
-    return (
+    const rows = (
       await c.query(
         `SELECT r.*,e.deleted_at FROM ${table} r JOIN foundation.entities e USING(id) WHERE ($3 OR e.deleted_at IS NULL) ${name === 'tasks.list' ? 'AND ($4::uuid IS NULL OR r.project_id=$4)' : ''} ORDER BY r.created_at,r.id LIMIT $1 OFFSET $2`,
         name === 'tasks.list'
@@ -178,6 +276,17 @@ export async function contentOperation(
           : [a.limit, a.offset, a.includeDeleted],
       )
     ).rows;
+    if (name === 'tasks.list') {
+      const summaries = await loadTaskWorkSummaries(
+        c,
+        rows.map((r) => String(r.id)),
+      );
+      return rows.map((r) => ({
+        ...r,
+        workSummary: summaries.get(String(r.id)) ?? emptyTaskWorkSummary(),
+      }));
+    }
+    return rows;
   }
   if (name === 'notes.history') {
     const a = operations[name].input.parse(input);
@@ -334,7 +443,7 @@ export async function contentOperation(
   }
   if (name === 'tasks.get') {
     const a = operations[name].input.parse(input);
-    return first(
+    const task = first(
       (
         await c.query(
           'SELECT r.id,project_id,title,acceptance,status,revision,e.deleted_at FROM planning.tasks r JOIN foundation.entities e USING(id) WHERE r.id=$1 AND ($2 OR e.deleted_at IS NULL)',
@@ -342,6 +451,11 @@ export async function contentOperation(
         )
       ).rows,
     );
+    const summaries = await loadTaskWorkSummaries(c, [String(task.id)]);
+    return {
+      ...task,
+      workSummary: summaries.get(String(task.id)) ?? emptyTaskWorkSummary(),
+    };
   }
   if (name === 'notes.create') {
     const a = operations[name].input.parse(input);

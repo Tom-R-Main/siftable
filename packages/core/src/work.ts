@@ -6,7 +6,8 @@ import { digest } from './database.js';
 import { agentWorkClaimTokenDigest } from './claimDigest.js';
 import { deriveVerificationCoverage } from './verificationCoverage.js';
 import type { VerificationStep } from './verificationTypes.js';
-import { buildWorkGraph } from './workGraph.js';
+import { buildWorkGraph, type WorkPriority } from './workGraph.js';
+import { redactSecretsInPayload } from './readSanitizer.js';
 import {
   dependencyCycleError,
   deriveWorkClaimability,
@@ -19,12 +20,115 @@ import {
   type WorkDependencyStateInput,
 } from './claimability.js';
 import { entity, reference, link, first, fail } from './helpers.js';
+
+export type WorkUpdateField = 'title' | 'description' | 'steps' | 'rank' | 'priority' | 'labels';
+
+export interface WorkUpdateStep {
+  key: string;
+  title: string;
+  required: boolean;
+}
+
+export interface WorkUpdateDiffInput {
+  title: string;
+  description: string;
+  steps: WorkUpdateStep[];
+  rank: number;
+  priority: WorkPriority;
+  labels: string[];
+}
+
+export interface WorkUpdatePatch {
+  title?: string;
+  description?: string;
+  steps?: WorkUpdateStep[];
+  rank?: number;
+  priority?: WorkPriority;
+  labels?: string[];
+}
+
+export interface WorkUpdateDiff {
+  changedFields: WorkUpdateField[];
+  before: Partial<WorkUpdateDiffInput>;
+  after: Partial<WorkUpdateDiffInput>;
+  invalidatedEvidence: boolean;
+}
+
+function normalizeSteps(
+  steps: readonly { key: string; title: string; required: boolean }[],
+): WorkUpdateStep[] {
+  return steps.map((s) => ({ key: s.key, title: s.title, required: s.required }));
+}
+
+export function computeWorkUpdateDiff(
+  current: WorkUpdateDiffInput,
+  patch: WorkUpdatePatch,
+): WorkUpdateDiff {
+  const changedFields: WorkUpdateField[] = [];
+  const before: Partial<WorkUpdateDiffInput> = {};
+  const after: Partial<WorkUpdateDiffInput> = {};
+  let invalidatedEvidence = false;
+
+  if (patch.title !== undefined && patch.title !== current.title) {
+    changedFields.push('title');
+    before.title = current.title;
+    after.title = patch.title;
+    invalidatedEvidence = true;
+  }
+  if (patch.description !== undefined && patch.description !== current.description) {
+    changedFields.push('description');
+    before.description = current.description;
+    after.description = patch.description;
+    invalidatedEvidence = true;
+  }
+  if (patch.steps !== undefined) {
+    const currentSteps = normalizeSteps(current.steps);
+    const nextSteps = normalizeSteps(patch.steps);
+    if (canonical(currentSteps) !== canonical(nextSteps)) {
+      changedFields.push('steps');
+      before.steps = currentSteps;
+      after.steps = nextSteps;
+      invalidatedEvidence = true;
+    }
+  }
+  if (patch.rank !== undefined && patch.rank !== current.rank) {
+    changedFields.push('rank');
+    before.rank = current.rank;
+    after.rank = patch.rank;
+  }
+  if (patch.priority !== undefined && patch.priority !== current.priority) {
+    changedFields.push('priority');
+    before.priority = current.priority;
+    after.priority = patch.priority;
+  }
+  if (patch.labels !== undefined) {
+    const same =
+      current.labels.length === patch.labels.length &&
+      current.labels.every((label, index) => label === patch.labels![index]);
+    if (!same) {
+      changedFields.push('labels');
+      before.labels = [...current.labels];
+      after.labels = [...patch.labels];
+    }
+  }
+
+  return {
+    changedFields,
+    before: redactSecretsInPayload(before),
+    after: redactSecretsInPayload(after),
+    invalidatedEvidence,
+  };
+}
+
 interface WorkRow {
   id: string;
   revision: number;
   deleted_at: Date | null;
   title: string;
   description: string;
+  rank: number;
+  priority: WorkPriority;
+  labels: string[];
   status: string;
   epoch: number;
   claim_principal: string | null;
@@ -207,8 +311,8 @@ export async function workOperation(
     const id = await entity(c, p, 'work.item');
     for (const d of a.dependencies) await reference(c, d.id, 'work.item');
     await c.query(
-      'INSERT INTO work.items(id,owner_id,scope_id,title,description) VALUES($1,$2,$3,$4,$5)',
-      [id, p.ownerId, p.scopeId, a.title, a.description],
+      'INSERT INTO work.items(id,owner_id,scope_id,title,description,rank,priority,labels) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',
+      [id, p.ownerId, p.scopeId, a.title, a.description, a.rank, a.priority, a.labels],
     );
     await plan(c, p, id, 1, a.steps, 'Initial plan');
     for (const d of a.dependencies)
@@ -234,7 +338,7 @@ export async function workOperation(
   if (name === 'work.list') {
     const a = operations[name].input.parse(input);
     const r = await c.query<WorkRow>(
-      'SELECT w.*,e.deleted_at FROM work.items w JOIN foundation.entities e USING(id) WHERE ($3 OR e.deleted_at IS NULL) ORDER BY w.created_at,w.id LIMIT $1 OFFSET $2',
+      'SELECT w.*,e.deleted_at FROM work.items w JOIN foundation.entities e USING(id) WHERE ($3 OR e.deleted_at IS NULL) ORDER BY w.rank ASC,w.created_at ASC,w.id ASC LIMIT $1 OFFSET $2',
       [a.limit, a.offset, a.includeDeleted],
     );
     return Promise.all(r.rows.map((w) => display(c, w)));
@@ -394,6 +498,9 @@ export async function workOperation(
         revision: r.revision,
         title: r.title,
         description: r.description,
+        rank: r.rank,
+        priority: r.priority,
+        labels: r.labels,
         status: r.status,
         plan_version: r.plan_version,
         summary: r.summary,
@@ -606,6 +713,7 @@ export async function workOperation(
     return { parent: await display(c, updatedParent), branches };
   }
   let artifactId: string | undefined;
+  let updateDiff: WorkUpdateDiff | undefined;
   if (name === 'work.update' || name === 'work.dependencies.set') {
     const a = operations[name].input.parse(input);
     if (w.status !== 'queued' && w.status !== 'blocked') {
@@ -630,11 +738,38 @@ export async function workOperation(
     }
     if (name === 'work.update') {
       const v = operations[name].input.parse(input);
-      await c.query('UPDATE work.items SET title=$2,description=$3 WHERE id=$1', [
-        w.id,
-        v.title,
-        v.description,
-      ]);
+      if (v.steps !== undefined && new Set(v.steps.map((x) => x.key)).size !== v.steps.length)
+        fail(400, 'duplicate_step', 'Verification step keys must be unique');
+      const current = await coverage(c, w);
+      updateDiff = computeWorkUpdateDiff(
+        {
+          title: w.title,
+          description: w.description,
+          steps: current.plan.steps,
+          rank: w.rank,
+          priority: w.priority,
+          labels: w.labels,
+        },
+        v,
+      );
+      const nextTitle = v.title ?? w.title;
+      const nextDescription = v.description ?? w.description;
+      const nextRank = v.rank ?? w.rank;
+      const nextPriority = v.priority ?? w.priority;
+      const nextLabels = v.labels ?? w.labels;
+      if (updateDiff.invalidatedEvidence) {
+        const nextSteps = v.steps ?? normalizeSteps(current.plan.steps);
+        await plan(c, p, w.id, w.plan_version + 1, nextSteps, v.reason);
+        await c.query(
+          'UPDATE work.items SET title=$2,description=$3,rank=$4,priority=$5,labels=$6,plan_version=plan_version+1,summary=NULL WHERE id=$1',
+          [w.id, nextTitle, nextDescription, nextRank, nextPriority, nextLabels],
+        );
+      } else {
+        await c.query(
+          'UPDATE work.items SET title=$2,description=$3,rank=$4,priority=$5,labels=$6 WHERE id=$1',
+          [w.id, nextTitle, nextDescription, nextRank, nextPriority, nextLabels],
+        );
+      }
     } else {
       const v = operations[name].input.parse(input);
       if (new Set(v.dependencies.map((d) => d.id)).size !== v.dependencies.length)
@@ -657,12 +792,12 @@ export async function workOperation(
           'INSERT INTO work.dependencies(owner_id,scope_id,work_id,predecessor_id,gate) VALUES($1,$2,$3,$4,$5)',
           [p.ownerId, p.scopeId, w.id, d.id, d.gate],
         );
+      const current = await coverage(c, w);
+      await plan(c, p, w.id, w.plan_version + 1, current.plan.steps, a.reason);
+      await c.query('UPDATE work.items SET plan_version=plan_version+1,summary=NULL WHERE id=$1', [
+        w.id,
+      ]);
     }
-    const current = await coverage(c, w);
-    await plan(c, p, w.id, w.plan_version + 1, current.plan.steps, a.reason);
-    await c.query('UPDATE work.items SET plan_version=plan_version+1,summary=NULL WHERE id=$1', [
-      w.id,
-    ]);
   } else if (name === 'work.requeue') {
     const v = operations[name].input.parse(input);
     if (!['blocked', 'failed', 'needs_review', 'cancelled'].includes(w.status))
@@ -811,6 +946,14 @@ export async function workOperation(
     ...('reason' in (input as object) ? { reason: (input as { reason: string }).reason } : {}),
     planVersion: updated.plan_version,
     ...(artifactId ? { artifactId } : {}),
+    ...(updateDiff
+      ? {
+          changedFields: updateDiff.changedFields,
+          before: updateDiff.before,
+          after: updateDiff.after,
+          invalidatedEvidence: updateDiff.invalidatedEvidence,
+        }
+      : {}),
     ...(name === 'work.dependencies.set'
       ? { dependencies: operations[name].input.parse(input).dependencies }
       : {}),

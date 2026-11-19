@@ -1,0 +1,12 @@
+{
+  "id": "memory",
+  "version": 1,
+  "requires": [
+    "foundation",
+    "projects"
+  ],
+  "migration": "001.sql",
+  "migrations": [
+    "001.sql"
+  ]
+}

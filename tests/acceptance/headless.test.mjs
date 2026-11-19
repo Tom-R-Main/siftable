@@ -241,11 +241,13 @@ test('standalone headless acceptance on real PostgreSQL and subprocess clients',
           );
           assert.equal(
             (await pool.query('SELECT count(*)::int AS n FROM foundation.migrations')).rows[0].n,
-            14,
+            15,
           );
           assert.ok(
             (await callCli(legacy, 'modules.list', {})).every(
-              (m) => m.version === (m.id === 'projects' || m.id === 'context' ? 3 : 2),
+              (m) =>
+                m.version ===
+                (m.id === 'projects' || m.id === 'context' || m.id === 'work' ? 3 : 2),
             ),
           );
           await cli(['install', '--modules', 'context'], legacy.adminUrl);
@@ -2676,6 +2678,506 @@ test('standalone headless acceptance on real PostgreSQL and subprocess clients',
         );
       },
     );
+    await t.test(
+      'metadata-only work.update preserves passing evidence, records field diffs, and agent reads sanitize bidi/secrets',
+      async () => {
+        const metaProject = await callCli(f, 'projects.create', {
+          title: 'Metadata and read redaction project',
+        });
+        let item = await createWork(f.owner, {
+          title: 'Metadata update target',
+          description: 'Initial contract description',
+          projectId: metaProject.id,
+          rank: 5,
+          priority: 'normal',
+          labels: ['  wave-4 ', 'backend', 'wave-4'],
+        });
+        assert.equal(item.rank, 5);
+        assert.equal(item.priority, 'normal');
+        assert.deepEqual(item.labels, ['wave-4', 'backend']);
+
+        // Record passing verification evidence and release back to queued.
+        await invoke(a.client, 'work.claim', { id: item.id });
+        await invoke(a.client, 'work.evidence', {
+          id: item.id,
+          planVersion: item.plan_version,
+          stepId: item.plan.steps[0].id,
+          attemptId: 'meta-pass-1',
+          outcome: 'passed',
+          output: 'All verification checks passed',
+          provenance: 'fixture://meta-evidence',
+        });
+        item = await invoke(a.client, 'work.release', { id: item.id });
+        assert.equal(item.coverage.state, 'commands_passed');
+        assert.equal(item.plan_version, 1);
+
+        // Stale revision on metadata-only update still fails closed with 409 revision_conflict.
+        await reject(
+          () =>
+            invoke(f.owner, 'work.update', {
+              id: item.id,
+              revision: item.revision - 1,
+              rank: -10,
+              reason: 'Stale metadata revision probe',
+            }),
+          'revision_conflict',
+        );
+
+        // Metadata-only update (including unchanged title) preserves plan_version and passing evidence.
+        const revBeforeMeta = item.revision;
+        item = await callCli(f, 'work.update', {
+          id: item.id,
+          revision: revBeforeMeta,
+          title: item.title,
+          rank: -10,
+          priority: 'urgent',
+          labels: ['p0', ' wave-4 ', 'p0'],
+          reason: 'Promote priority without changing contract',
+        });
+        assert.equal(item.revision, revBeforeMeta + 1);
+        assert.equal(item.plan_version, 1);
+        assert.equal(item.coverage.state, 'commands_passed');
+        assert.equal(item.rank, -10);
+        assert.equal(item.priority, 'urgent');
+        assert.deepEqual(item.labels, ['p0', 'wave-4']);
+
+        const afterMetaDetail = await invoke(f.owner, 'work.get', { id: item.id });
+        assert.equal(afterMetaDetail.plans.length, 1);
+        const metaEvent = afterMetaDetail.history.findLast((e) => e.event === 'work.update');
+        assert.deepEqual(metaEvent.detail.changedFields, ['rank', 'priority', 'labels']);
+        assert.deepEqual(metaEvent.detail.before, {
+          rank: 5,
+          priority: 'normal',
+          labels: ['wave-4', 'backend'],
+        });
+        assert.deepEqual(metaEvent.detail.after, {
+          rank: -10,
+          priority: 'urgent',
+          labels: ['p0', 'wave-4'],
+        });
+        assert.equal(metaEvent.detail.invalidatedEvidence, false);
+
+        // work.list and work.graph both surface updated rank, priority, and labels.
+        const listed = await invoke(f.owner, 'work.list', { limit: 100, offset: 0 });
+        const listedItem = listed.find((entry) => entry.id === item.id);
+        assert.equal(listedItem.rank, -10);
+        assert.equal(listedItem.priority, 'urgent');
+        assert.deepEqual(listedItem.labels, ['p0', 'wave-4']);
+        const graph = await invoke(f.owner, 'work.graph', { projectId: metaProject.id });
+        const graphNode = graph.nodes.find((n) => n.id === item.id);
+        assert.equal(graphNode.rank, -10);
+        assert.equal(graphNode.priority, 'urgent');
+        assert.deepEqual(graphNode.labels, ['p0', 'wave-4']);
+
+        // Metadata-only update while leased is still rejected.
+        const claimed = await invoke(a.client, 'work.claim', { id: item.id });
+        await reject(
+          () =>
+            invoke(f.owner, 'work.update', {
+              id: item.id,
+              revision: claimed.revision,
+              rank: 20,
+              reason: 'Cannot edit while leased',
+            }),
+          'invalid_transition',
+        );
+        item = await invoke(a.client, 'work.release', { id: item.id });
+        assert.equal(item.coverage.state, 'commands_passed');
+
+        // Contract/intent update (title + steps) still bumps plan_version and invalidates evidence.
+        item = await callCli(f, 'work.update', {
+          id: item.id,
+          revision: item.revision,
+          title: 'Revised contract title',
+          steps: [
+            { key: 'check', title: 'Observable result', required: true },
+            { key: 'extra', title: 'Second required gate', required: true },
+          ],
+          reason: 'Expand verification contract',
+        });
+        assert.equal(item.plan_version, 2);
+        assert.equal(item.coverage.state, 'unverified');
+        const afterIntentDetail = await invoke(f.owner, 'work.get', { id: item.id });
+        assert.equal(afterIntentDetail.plans.length, 2);
+        const intentEvent = afterIntentDetail.history.findLast((e) => e.event === 'work.update');
+        assert.deepEqual(intentEvent.detail.changedFields, ['title', 'steps']);
+        assert.equal(intentEvent.detail.before.title, 'Metadata update target');
+        assert.equal(intentEvent.detail.after.title, 'Revised contract title');
+        assert.equal(intentEvent.detail.before.steps.length, 1);
+        assert.equal(intentEvent.detail.after.steps.length, 2);
+        assert.equal(intentEvent.detail.invalidatedEvidence, true);
+
+        // Agent reads strip invisible/bidi characters and redact pre-existing secrets while preserving UUIDs/timestamps/digests.
+        const dirtyItem = await createWork(f.owner, {
+          title: 'Audit\u202E bidi\u200B title\uFEFF',
+          description: 'Clean before legacy injection',
+          projectId: metaProject.id,
+          rank: -1,
+          priority: 'high',
+          labels: ['sec\u200Burity'],
+        });
+        await invoke(a.client, 'work.claim', { id: dirtyItem.id });
+        const artifactAdded = await invoke(a.client, 'work.artifacts.add', {
+          id: dirtyItem.id,
+          name: 'notes.md',
+          mediaType: 'text/markdown',
+          content: 'Check\u202E artifact\u200B text',
+        });
+        await invoke(a.client, 'work.release', { id: dirtyItem.id });
+
+        // Simulate a legacy/pre-policy database row containing leaked credentials.
+        const adminPool = new Pool({ connectionString: f.adminUrl });
+        try {
+          await adminPool.query('UPDATE work.items SET description=$2 WHERE id=$1', [
+            dirtyItem.id,
+            'Leaked sk-proj-abcdefghijklmnop123456 and ghp_1234567890abcdefghij123456 and Authorization: Bearer supersecret999 and token=raw_secret_val',
+          ]);
+        } finally {
+          await adminPool.end();
+        }
+
+        const agentGet = await invoke(a.client, 'work.get', { id: dirtyItem.id });
+        assert.equal(agentGet.id, dirtyItem.id);
+        assert.equal(agentGet.title, 'Audit bidi title');
+        assert.deepEqual(agentGet.labels, ['security']);
+        assert.ok(agentGet.description.includes('[REDACTED]'));
+        assert.ok(!agentGet.description.includes('sk-proj-'));
+        assert.ok(!agentGet.description.includes('ghp_'));
+        assert.ok(!agentGet.description.includes('supersecret999'));
+        assert.ok(!agentGet.description.includes('raw_secret_val'));
+        assert.equal(agentGet.artifacts.length, 1);
+        assert.match(agentGet.artifacts[0].digest, /^[0-9a-f]{64}$/);
+
+        const agentArtifact = await invoke(a.client, 'work.artifacts.get', {
+          id: dirtyItem.id,
+          artifactId: artifactAdded.artifactId,
+        });
+        assert.equal(agentArtifact.content, 'Check artifact text');
+        assert.equal(agentArtifact.digest, agentGet.artifacts[0].digest);
+
+        const agentGraph = await invoke(a.client, 'work.graph', { projectId: metaProject.id });
+        const agentNode = agentGraph.nodes.find((n) => n.id === dirtyItem.id);
+        assert.equal(agentNode.title, 'Audit bidi title');
+        assert.ok(!agentNode.description.includes('sk-proj-'));
+        assert.ok(agentNode.description.includes('[REDACTED]'));
+
+        // Owner reads retain raw stored content for operator inspection/remediation.
+        const ownerGet = await invoke(f.owner, 'work.get', { id: dirtyItem.id });
+        assert.ok(ownerGet.title.includes('\u202E'));
+        assert.ok(ownerGet.description.includes('sk-proj-'));
+      },
+    );
+    await t.test(
+      'tasks workSummary rollup, bounded links.graph with RLS, and live GET /v1/events SSE',
+      async () => {
+        // 1. Planning-without-work returns zeroed workSummary cleanly without touching work.items
+        const planningOnly = await fixture('planning_no_work', ['projects', 'planning']);
+        try {
+          const pOnlyProj = await invoke(planningOnly.owner, 'projects.create', {
+            title: 'Planning Only Project',
+          });
+          const pOnlyTask = await invoke(planningOnly.owner, 'tasks.create', {
+            title: 'Task without work module',
+            projectId: pOnlyProj.id,
+          });
+          const pOnlyGot = await invoke(planningOnly.owner, 'tasks.get', { id: pOnlyTask.id });
+          assert.deepEqual(pOnlyGot.workSummary, {
+            total: 0,
+            done: 0,
+            active: 0,
+            ready: 0,
+            needsReview: 0,
+            blocked: 0,
+            failed: 0,
+          });
+          const pOnlyListed = await invoke(planningOnly.owner, 'tasks.list', {
+            projectId: pOnlyProj.id,
+          });
+          assert.equal(pOnlyListed.length, 1);
+          assert.deepEqual(pOnlyListed[0].workSummary, pOnlyGot.workSummary);
+        } finally {
+          await stop(planningOnly);
+        }
+
+        // 2. Full rollup across statuses + deleted work excluded
+        const rollupProj = await invoke(f.owner, 'projects.create', {
+          title: 'Rollup & Links Graph Project',
+        });
+        const rollupTask = await invoke(f.owner, 'tasks.create', {
+          title: 'Deliver live SSE and rollups',
+          projectId: rollupProj.id,
+        });
+        const rollupNote = await invoke(f.owner, 'notes.create', {
+          title: 'SSE design note',
+          body: 'Post-commit pg_notify drives SSE updates',
+          projectId: rollupProj.id,
+        });
+
+        const wReady = await createWork(f.owner, {
+          title: 'Rollup ready',
+          projectId: rollupProj.id,
+          taskId: rollupTask.id,
+          contextIds: [rollupNote.id],
+        });
+        const wActive = await createWork(f.owner, {
+          title: 'Rollup active',
+          projectId: rollupProj.id,
+          taskId: rollupTask.id,
+        });
+        await invoke(a.client, 'work.claim', { id: wActive.id });
+        await invoke(a.client, 'work.start', { id: wActive.id });
+
+        const wBlocked = await createWork(f.owner, {
+          title: 'Rollup blocked',
+          projectId: rollupProj.id,
+          taskId: rollupTask.id,
+        });
+        await invoke(a.client, 'work.claim', { id: wBlocked.id });
+        await invoke(a.client, 'work.block', { id: wBlocked.id, reason: 'Waiting on spec' });
+
+        const wFailed = await createWork(f.owner, {
+          title: 'Rollup failed',
+          projectId: rollupProj.id,
+          taskId: rollupTask.id,
+        });
+        await invoke(a.client, 'work.claim', { id: wFailed.id });
+        await invoke(a.client, 'work.fail', { id: wFailed.id, reason: 'Broken build' });
+
+        const wReview = await createWork(f.owner, {
+          title: 'Rollup review',
+          projectId: rollupProj.id,
+          taskId: rollupTask.id,
+        });
+        await invoke(a.client, 'work.claim', { id: wReview.id });
+        await invoke(a.client, 'work.start', { id: wReview.id });
+        await invoke(a.client, 'work.evidence', {
+          id: wReview.id,
+          planVersion: 1,
+          stepId: wReview.plan.steps[0].id,
+          attemptId: 'att-review',
+          outcome: 'passed',
+          output: 'ok',
+          provenance: 'test',
+        });
+        await invoke(a.client, 'work.review', { id: wReview.id, summary: 'Ready for review' });
+
+        const wDone = await createWork(f.owner, {
+          title: 'Rollup done',
+          projectId: rollupProj.id,
+          taskId: rollupTask.id,
+        });
+        await invoke(a.client, 'work.claim', { id: wDone.id });
+        await invoke(a.client, 'work.start', { id: wDone.id });
+        await invoke(a.client, 'work.evidence', {
+          id: wDone.id,
+          planVersion: 1,
+          stepId: wDone.plan.steps[0].id,
+          attemptId: 'att-done',
+          outcome: 'passed',
+          output: 'ok',
+          provenance: 'test',
+        });
+        await invoke(a.client, 'work.review', { id: wDone.id, summary: 'Complete' });
+        await invoke(f.owner, 'work.accept', { id: wDone.id, summary: 'Accepted' });
+
+        const wDeleted = await createWork(f.owner, {
+          title: 'Rollup deleted',
+          projectId: rollupProj.id,
+          taskId: rollupTask.id,
+        });
+        const wCancelled = await invoke(f.owner, 'work.cancel', {
+          id: wDeleted.id,
+          reason: 'Cancel before soft-delete',
+        });
+        await invoke(f.owner, 'work.delete', {
+          id: wDeleted.id,
+          revision: wCancelled.revision,
+          reason: 'Remove from rollup',
+        });
+
+        const expectedSummary = {
+          total: 6,
+          done: 1,
+          active: 1,
+          ready: 1,
+          needsReview: 1,
+          blocked: 1,
+          failed: 1,
+        };
+        const gotTask = await invoke(f.owner, 'tasks.get', { id: rollupTask.id });
+        assert.deepEqual(gotTask.workSummary, expectedSummary);
+        const listedTasks = await invoke(f.owner, 'tasks.list', { projectId: rollupProj.id });
+        assert.equal(listedTasks.length, 1);
+        assert.deepEqual(listedTasks[0].workSummary, expectedSummary);
+
+        // 3. Bounded links.graph depth 1..3, maxNodes truncation, includeDeleted & RLS/scope isolation
+        const graphD1 = await invoke(f.owner, 'links.graph', {
+          id: rollupTask.id,
+          depth: 1,
+        });
+        assert.equal(graphD1.rootId, rollupTask.id);
+        assert.equal(graphD1.depth, 1);
+        assert.equal(graphD1.truncated, false);
+        assert.ok(graphD1.nodes.some((n) => n.id === wReady.id && n.depth === 1));
+        assert.equal(
+          graphD1.nodes.some((n) => n.id === rollupNote.id),
+          false,
+          'Note is 2 hops from task (task <- work -> note)',
+        );
+        assert.equal(
+          graphD1.nodes.some((n) => n.id === wDeleted.id),
+          false,
+          'Deleted node must be excluded when includeDeleted=false',
+        );
+
+        const graphD2 = await invoke(f.owner, 'links.graph', {
+          id: rollupTask.id,
+          depth: 2,
+        });
+        assert.ok(graphD2.nodes.some((n) => n.id === rollupNote.id && n.depth === 2));
+        assert.ok(graphD2.nodes.some((n) => n.id === rollupProj.id && n.depth === 2));
+        assert.ok(
+          graphD2.edges.some(
+            (e) =>
+              e.sourceId === wReady.id &&
+              e.targetId === rollupTask.id &&
+              e.relation === 'implements',
+          ),
+        );
+
+        const graphTrunc = await invoke(f.owner, 'links.graph', {
+          id: rollupTask.id,
+          depth: 3,
+          maxNodes: 2,
+        });
+        assert.equal(graphTrunc.truncated, true);
+        assert.equal(graphTrunc.nodes.length, 2);
+
+        const graphWithDeleted = await invoke(f.owner, 'links.graph', {
+          id: rollupTask.id,
+          depth: 1,
+          includeDeleted: true,
+        });
+        assert.equal(graphWithDeleted.nodes.find((n) => n.id === wDeleted.id)?.deleted, true);
+
+        const scopeId = randomUUID();
+        const scopedReader = await agent(
+          f,
+          'scoped_events_agent',
+          ['foundation:read', 'context:read', 'context:write'],
+          { scopeId },
+        );
+        await reject(
+          () => invoke(scopedReader.client, 'links.graph', { id: rollupTask.id, depth: 2 }),
+          'not_found',
+        );
+
+        // 4. Authenticated GET /v1/events SSE delivers post-commit writes & enforces owner/scope isolation
+        const unauthRes = await fetch(new URL('/v1/events', f.url));
+        assert.equal(unauthRes.status, 401);
+
+        const ownerCred = await readCredentials(f.ownerPath);
+        const scopedCred = await readCredentials(scopedReader.path);
+        const ownerAbort = new AbortController();
+        const scopedAbort = new AbortController();
+
+        const openSse = async (cred, controller) => {
+          const res = await fetch(new URL('/v1/events', f.url), {
+            headers: { Authorization: `Bearer ${cred.token}` },
+            signal: controller.signal,
+          });
+          assert.equal(res.status, 200);
+          assert.match(res.headers.get('content-type') || '', /text\/event-stream/);
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          const state = { buf: '' };
+          const pump = (async () => {
+            try {
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                state.buf += decoder.decode(value, { stream: true });
+              }
+            } catch {
+              // Aborted cleanly on teardown.
+            }
+          })();
+          const waitFor = async (predicate, timeoutMs = 5000) => {
+            const deadline = Date.now() + timeoutMs;
+            while (!predicate(state.buf)) {
+              if (Date.now() > deadline) {
+                throw new Error(`Timed out waiting for SSE match. Buffer: ${state.buf}`);
+              }
+              await new Promise((r) => setTimeout(r, 20));
+            }
+          };
+          await waitFor((buf) => buf.includes(': connected'));
+          return { state, waitFor, pump };
+        };
+
+        try {
+          const ownerSse = await openSse(ownerCred, ownerAbort);
+          const scopedSse = await openSse(scopedCred, scopedAbort);
+
+          // Owner committed write reaches owner SSE, never leaks to scoped agent
+          await invoke(f.owner, 'notes.create', {
+            title: 'Owner SSE probe',
+            body: 'Delivered to personal owner stream only',
+          });
+          await ownerSse.waitFor(
+            (buf) => buf.includes('event: update') && buf.includes('"notes.create"'),
+          );
+          await new Promise((r) => setTimeout(r, 150));
+          assert.equal(
+            scopedSse.state.buf.includes('event: update'),
+            false,
+            'Scoped agent must never receive personal-scope SSE events',
+          );
+
+          // Scoped committed write reaches scoped SSE with scopeId, never leaks to personal owner
+          const ownerBufBeforeScoped = ownerSse.state.buf;
+          await invoke(scopedReader.client, 'notes.create', {
+            title: 'Scoped SSE probe',
+            body: 'Delivered to scoped stream only',
+          });
+          await scopedSse.waitFor(
+            (buf) =>
+              buf.includes('event: update') &&
+              buf.includes('"notes.create"') &&
+              buf.includes(scopeId),
+          );
+          await new Promise((r) => setTimeout(r, 150));
+          assert.equal(
+            ownerSse.state.buf,
+            ownerBufBeforeScoped,
+            'Personal owner must never receive scoped-agent SSE events',
+          );
+
+          // Rolled-back write emits zero SSE notifications
+          const ownerBufBeforeFail = ownerSse.state.buf;
+          await reject(
+            () =>
+              invoke(f.owner, 'work.update', {
+                id: wReady.id,
+                revision: 999,
+                title: 'Should roll back',
+                description: '',
+                reason: 'Stale revision rollback check',
+              }),
+            'revision_conflict',
+          );
+          await new Promise((r) => setTimeout(r, 150));
+          assert.equal(
+            ownerSse.state.buf,
+            ownerBufBeforeFail,
+            'Rolled-back write must not emit post-commit NOTIFY event',
+          );
+        } finally {
+          ownerAbort.abort();
+          scopedAbort.abort();
+        }
+      },
+    );
     await t.test('restart preserves accepted work and idempotency receipts', async () => {
       await stop(f);
       await start(f);
@@ -2705,6 +3207,484 @@ test('standalone headless acceptance on real PostgreSQL and subprocess clients',
         'cancelled',
       );
     });
+    await t.test(
+      'optional embedding-free memory module enforces lifecycle, guardrails, dedup, FTS/path ranking, real git/hash staleness, RLS, and backup/restore',
+      async () => {
+        const { rm, unlink } = await import('node:fs/promises');
+        const { join } = await import('node:path');
+        const { inspectCodeMemoryPaths } = await import('../../packages/client/dist/index.js');
+
+        const memFixture = await fixture('code_memory', ['projects', 'memory']);
+        const db = new Pool({ connectionString: memFixture.adminUrl });
+        const repoDir = resolve(memFixture.dir, 'sample-repo');
+        let hasGit = false;
+        try {
+          await exec('git', ['--version'], { env: { PATH: process.env.PATH } });
+          hasGit = true;
+        } catch {
+          hasGit = false;
+        }
+        const runGit = async (...args) => {
+          const { stdout } = await exec('git', args, {
+            cwd: repoDir,
+            env: {
+              PATH: process.env.PATH,
+              GIT_AUTHOR_NAME: 'Siftable Acceptance',
+              GIT_AUTHOR_EMAIL: 'acceptance@siftable.local',
+              GIT_COMMITTER_NAME: 'Siftable Acceptance',
+              GIT_COMMITTER_EMAIL: 'acceptance@siftable.local',
+              GIT_TERMINAL_PROMPT: '0',
+            },
+          });
+          return stdout.trim();
+        };
+
+        try {
+          // Physical independence: only foundation, memory, projects schemas exist (zero pgvector / code_chunks).
+          const schemas = (
+            await db.query(
+              "SELECT schema_name FROM information_schema.schemata WHERE schema_name IN ('foundation','projects','context','work','planning','extensions','memory') ORDER BY schema_name",
+            )
+          ).rows.map((r) => r.schema_name);
+          assert.deepEqual(schemas, ['foundation', 'memory', 'projects']);
+          assert.equal(
+            (await db.query("SELECT 1 FROM pg_extension WHERE extname='vector'")).rowCount,
+            0,
+          );
+
+          const project = await invoke(memFixture.owner, 'projects.create', {
+            title: 'Code Memory Acceptance Project',
+            instructions: 'Track durable codebase facts without embeddings',
+          });
+          const memAgent = await agent(memFixture, 'mem_agent', [
+            'projects:read',
+            'memory:read',
+            'memory:write',
+          ]);
+          const isolatedScopeAgent = await agent(
+            memFixture,
+            'mem_other_scope',
+            ['projects:read', 'memory:read', 'memory:write'],
+            { scopeId: randomUUID() },
+          );
+
+          // Set up real local files (and git repo when git is present in the runtime image).
+          await mkdir(join(repoDir, 'packages', 'core', 'src'), { recursive: true });
+          await mkdir(join(repoDir, 'packages', 'client', 'src'), { recursive: true });
+          await mkdir(join(repoDir, 'apps', 'server', 'src'), { recursive: true });
+
+          const policyRel = 'packages/core/src/secretPolicy.ts';
+          const memoryRel = 'packages/core/src/memory.ts';
+          const clientRel = 'packages/client/src/index.ts';
+          const serverRel = 'apps/server/src/index.ts';
+
+          await writeFile(join(repoDir, policyRel), 'export const policyRule = 1;\n');
+          await writeFile(join(repoDir, memoryRel), 'export const memoryRule = 1;\n');
+          await writeFile(join(repoDir, clientRel), 'export const clientRule = 1;\n');
+          await writeFile(join(repoDir, serverRel), 'export const serverRule = 1;\n');
+
+          const fallbackCommit1 = '1111111111111111111111111111111111111111';
+          const fallbackCommit2 = '2222222222222222222222222222222222222222';
+          if (hasGit) {
+            await runGit('init', '-b', 'main');
+            await runGit('add', '.');
+            await runGit('commit', '-m', 'initial codebase state');
+          }
+
+          const baseline = await inspectCodeMemoryPaths(repoDir, [
+            policyRel,
+            memoryRel,
+            clientRel,
+            serverRel,
+          ]);
+          const commit1 = baseline.headCommit ?? fallbackCommit1;
+          assert.ok(baseline.fileHashes[policyRel]);
+          assert.ok(baseline.fileHashes[memoryRel]);
+          assert.ok(baseline.fileHashes[clientRel]);
+
+          // 1. Guardrails: agent provenance required, raw code dumps & secrets refused.
+          await reject(
+            () =>
+              invoke(memAgent.client, 'memory.store', {
+                projectId: project.id,
+                title: 'Missing provenance',
+                summary: 'Agent stores must fail without paths and sourceCommit.',
+                kind: 'invariant',
+              }),
+            'provenance_required',
+          );
+          await reject(
+            () =>
+              invoke(memAgent.client, 'memory.store', {
+                projectId: project.id,
+                title: 'Bad commit sha',
+                summary: 'Invalid commit sha must fail closed.',
+                kind: 'invariant',
+                paths: [memoryRel],
+                sourceCommit: 'not-hex',
+              }),
+            'provenance_required',
+          );
+          await reject(
+            () =>
+              invoke(memAgent.client, 'memory.store', {
+                projectId: project.id,
+                title: 'Fenced code paste',
+                summary: 'Do not store raw code:\n```ts\nexport const x = 1;\n```',
+                kind: 'gotcha',
+                paths: [memoryRel],
+                sourceCommit: commit1,
+              }),
+            'raw_code_dump',
+          );
+          await reject(
+            () =>
+              invoke(memAgent.client, 'memory.store', {
+                projectId: project.id,
+                title: 'Leaked token',
+                summary: 'Never commit ghp_abcdefghijklmnopqrstuvwxyz123456 in code memory.',
+                kind: 'gotcha',
+                paths: [policyRel],
+                sourceCommit: commit1,
+              }),
+            'secret_detected',
+          );
+
+          // 2. Agent default status = unreviewed; owner default status = confirmed.
+          // Also verifies path-keyed fileHashes with 'secretPolicy.ts' do NOT false-positive.
+          const agentFact = await invoke(memAgent.client, 'memory.store', {
+            projectId: project.id,
+            title: 'Transaction boundary isolates tenant state',
+            summary:
+              'Transaction isolation sets app.owner_id and app.scope_id locally before executing queries.',
+            kind: 'invariant',
+            paths: [policyRel],
+            symbols: ['findInlineAgentWorkSecret'],
+            sourceCommit: commit1,
+            fileHashes: { [policyRel]: baseline.fileHashes[policyRel] },
+          });
+          assert.equal(agentFact.status, 'unreviewed');
+          assert.equal(agentFact.deduplicated, false);
+
+          // 3. Normalized fact_hash deduplication returns existing active entry.
+          const deduped = await invoke(memAgent.client, 'memory.store', {
+            projectId: project.id,
+            title: '  TRANSACTION   BOUNDARY isolates tenant state ',
+            summary:
+              'transaction isolation sets   app.owner_id and app.scope_id locally before executing queries.',
+            kind: 'invariant',
+            paths: [`./${policyRel}`],
+            sourceCommit: commit1,
+          });
+          assert.equal(deduped.deduplicated, true);
+          assert.equal(deduped.id, agentFact.id);
+
+          // 4. Operator-only memory.review: agent forbidden, owner confirms/rejects.
+          await reject(
+            () =>
+              invoke(memAgent.client, 'memory.review', {
+                id: agentFact.id,
+                revision: agentFact.revision,
+                decision: 'confirmed',
+                note: 'Agent cannot self-confirm',
+              }),
+            'forbidden',
+          );
+
+          const confirmedAgentFact = await invoke(memFixture.owner, 'memory.review', {
+            id: agentFact.id,
+            revision: agentFact.revision,
+            decision: 'confirmed',
+            note: 'Verified against database.ts',
+          });
+          assert.equal(confirmedAgentFact.status, 'confirmed');
+          assert.equal(confirmedAgentFact.revision, 2);
+
+          // Owner store defaults to confirmed.
+          const exactPathConfirmed = await invoke(memFixture.owner, 'memory.store', {
+            projectId: project.id,
+            title: 'Ledger checkpoint invariant',
+            summary:
+              'Ledger checkpoint commits append-only events atomically inside the transaction.',
+            kind: 'architecture',
+            paths: [memoryRel],
+            sourceCommit: commit1,
+            fileHashes: { [memoryRel]: baseline.fileHashes[memoryRel] },
+          });
+          assert.equal(exactPathConfirmed.status, 'confirmed');
+
+          const sameDirConfirmed = await invoke(memFixture.owner, 'memory.store', {
+            projectId: project.id,
+            title: 'Ledger checkpoint policy check',
+            summary:
+              'Ledger checkpoint commits append-only events atomically inside the transaction.',
+            kind: 'architecture',
+            paths: [policyRel],
+            sourceCommit: commit1,
+          });
+          const sharedParentConfirmed = await invoke(memFixture.owner, 'memory.store', {
+            projectId: project.id,
+            title: 'Ledger checkpoint client check',
+            summary:
+              'Ledger checkpoint commits append-only events atomically inside the transaction.',
+            kind: 'architecture',
+            paths: [clientRel],
+            sourceCommit: commit1,
+            fileHashes: { [clientRel]: baseline.fileHashes[clientRel] },
+          });
+          const unrelatedConfirmed = await invoke(memFixture.owner, 'memory.store', {
+            projectId: project.id,
+            title: 'Ledger checkpoint server check',
+            summary:
+              'Ledger checkpoint commits append-only events atomically inside the transaction.',
+            kind: 'architecture',
+            paths: [serverRel],
+            sourceCommit: commit1,
+          });
+
+          // Lifecycle ranking: unreviewed & needs_review & rejected entries for same query term.
+          const unreviewedSearchFact = await invoke(memAgent.client, 'memory.store', {
+            projectId: project.id,
+            title: 'Ledger checkpoint draft note',
+            summary:
+              'Ledger checkpoint commits append-only events atomically inside the transaction.',
+            kind: 'decision',
+            paths: [memoryRel],
+            sourceCommit: commit1,
+          });
+          const rejectedFact = await invoke(memAgent.client, 'memory.store', {
+            projectId: project.id,
+            title: 'Ledger checkpoint rejected claim',
+            summary:
+              'Ledger checkpoint commits append-only events atomically inside the transaction.',
+            kind: 'gotcha',
+            paths: [memoryRel],
+            sourceCommit: commit1,
+          });
+          await invoke(memFixture.owner, 'memory.review', {
+            id: rejectedFact.id,
+            revision: rejectedFact.revision,
+            decision: 'rejected',
+            note: 'Supplanted by cleaner invariant',
+          });
+
+          // 5. Supersede lineage: old transitions atomically to superseded with superseded_by + event.
+          const supersededReplacement = await invoke(memFixture.owner, 'memory.store', {
+            projectId: project.id,
+            title: 'Ledger checkpoint v2 invariant',
+            summary:
+              'Ledger checkpoint v2 commits append-only events atomically inside the transaction.',
+            kind: 'architecture',
+            paths: [memoryRel],
+            sourceCommit: commit1,
+            fileHashes: { [memoryRel]: baseline.fileHashes[memoryRel] },
+            supersedesId: exactPathConfirmed.id,
+          });
+          assert.equal(supersededReplacement.status, 'confirmed');
+          const oldEntry = await invoke(memFixture.owner, 'memory.get', {
+            id: exactPathConfirmed.id,
+          });
+          assert.equal(oldEntry.status, 'superseded');
+          assert.equal(oldEntry.supersededBy, supersededReplacement.id);
+          assert.equal(oldEntry.revision, 2);
+          assert.equal(oldEntry.eventCount, 2);
+          const oldEvents = await invoke(memFixture.owner, 'memory.events', {
+            id: exactPathConfirmed.id,
+          });
+          assert.deepEqual(
+            oldEvents.map((e) => e.event),
+            ['memory.stored', 'memory.superseded'],
+          );
+          assert.equal(oldEvents[1].detail.supersededBy, supersededReplacement.id);
+
+          // 6. FTS + path-proximity + lifecycle ranking (excludes rejected & superseded by default).
+          const searchResult = await invoke(memFixture.owner, 'memory.search', {
+            query: 'ledger checkpoint',
+            projectId: project.id,
+            paths: [memoryRel],
+          });
+          assert.equal(searchResult.matchMode, 'fts');
+          const resultIds = searchResult.items.map((item) => item.id);
+          assert.equal(resultIds.includes(rejectedFact.id), false);
+          assert.equal(resultIds.includes(exactPathConfirmed.id), false);
+          // Confirmed exact path beats unreviewed exact path and beats same-dir/shared-parent/unrelated
+          assert.equal(searchResult.items[0].id, supersededReplacement.id);
+          assert.ok(
+            resultIds.indexOf(supersededReplacement.id) <
+              resultIds.indexOf(unreviewedSearchFact.id),
+          );
+          assert.ok(
+            resultIds.indexOf(sameDirConfirmed.id) < resultIds.indexOf(sharedParentConfirmed.id),
+          );
+          assert.ok(
+            resultIds.indexOf(sharedParentConfirmed.id) < resultIds.indexOf(unrelatedConfirmed.id),
+          );
+
+          // Prefix fallback works for partial token queries.
+          const prefixResult = await invoke(memFixture.owner, 'memory.search', {
+            query: 'checkpoi',
+            projectId: project.id,
+          });
+          assert.equal(prefixResult.matchMode, 'prefix_fallback');
+          assert.ok(prefixResult.items.length >= 1);
+
+          // memory.list filters by pathPrefix, kind, and status.
+          const coreList = await invoke(memFixture.owner, 'memory.list', {
+            projectId: project.id,
+            pathPrefix: 'packages/core/src',
+            status: 'confirmed',
+          });
+          assert.ok(coreList.some((m) => m.id === supersededReplacement.id));
+          assert.equal(
+            coreList.some((m) => m.id === sharedParentConfirmed.id),
+            false,
+          );
+
+          // Manual mark_needs_review transition + audit event.
+          const markedManual = await invoke(memAgent.client, 'memory.mark_needs_review', {
+            id: unrelatedConfirmed.id,
+            revision: unrelatedConfirmed.revision,
+            reason: 'Server bootstrap refactored',
+          });
+          assert.equal(markedManual.status, 'needs_review');
+
+          // 7. Real git commit + file-hash staleness detection (dryRun + live mutation).
+          await writeFile(join(repoDir, memoryRel), 'export const memoryRule = 2;\n');
+          if (hasGit) {
+            await runGit('add', memoryRel);
+            await runGit('commit', '-m', 'modify memory.ts');
+          }
+          await unlink(join(repoDir, clientRel));
+
+          const drifted = await inspectCodeMemoryPaths(repoDir, [
+            policyRel,
+            memoryRel,
+            clientRel,
+            serverRel,
+          ]);
+          const observedPathCommits = hasGit
+            ? drifted.pathCommits
+            : {
+                [policyRel]: commit1,
+                [memoryRel]: fallbackCommit2,
+                [clientRel]: commit1,
+                [serverRel]: commit1,
+              };
+          const dryRunStale = await invoke(memFixture.owner, 'memory.detect_stale', {
+            projectId: project.id,
+            pathCommits: observedPathCommits,
+            fileHashes: drifted.fileHashes,
+            reason: 'Post-commit staleness scan',
+            dryRun: true,
+          });
+          assert.equal(dryRunStale.dryRun, true);
+          assert.ok(dryRunStale.staleCount >= 3);
+          assert.equal(
+            (await invoke(memFixture.owner, 'memory.get', { id: supersededReplacement.id })).status,
+            'confirmed',
+          );
+
+          const appliedStale = await invoke(memFixture.owner, 'memory.detect_stale', {
+            projectId: project.id,
+            pathCommits: observedPathCommits,
+            fileHashes: drifted.fileHashes,
+            reason: 'Post-commit staleness scan',
+            dryRun: false,
+          });
+          assert.equal(appliedStale.dryRun, false);
+          assert.equal(appliedStale.staleCount, dryRunStale.staleCount);
+
+          const staleMemoryItem = appliedStale.stale.find((s) => s.id === supersededReplacement.id);
+          assert.ok(staleMemoryItem);
+          assert.equal(staleMemoryItem.previousStatus, 'confirmed');
+          assert.equal(staleMemoryItem.newStatus, 'needs_review');
+          assert.deepEqual(staleMemoryItem.changedPaths, [memoryRel]);
+
+          const staleDeletedItem = appliedStale.stale.find(
+            (s) => s.id === sharedParentConfirmed.id,
+          );
+          assert.ok(staleDeletedItem);
+          assert.deepEqual(staleDeletedItem.changedPaths, [clientRel]);
+          assert.ok(staleDeletedItem.reasons.includes(`file_deleted:${clientRel}`));
+
+          // Unchanged policyRel entry remains confirmed.
+          assert.equal(
+            (await invoke(memFixture.owner, 'memory.get', { id: confirmedAgentFact.id })).status,
+            'confirmed',
+          );
+
+          // 8. Immutable memory.events enforced by foundation.immutable() trigger.
+          await assert.rejects(
+            () =>
+              db.query("UPDATE memory.events SET event='tampered' WHERE memory_id=$1", [
+                supersededReplacement.id,
+              ]),
+            (err) => err.code === '23514' && /append_only/.test(err.message),
+          );
+          await assert.rejects(
+            () =>
+              db.query('DELETE FROM memory.events WHERE memory_id=$1', [supersededReplacement.id]),
+            (err) => err.code === '23514' && /append_only/.test(err.message),
+          );
+
+          // 9. RLS scope isolation: different scope sees zero entries.
+          await reject(
+            () => invoke(isolatedScopeAgent.client, 'memory.get', { id: confirmedAgentFact.id }),
+            'not_found',
+          );
+          await reject(
+            () => invoke(isolatedScopeAgent.client, 'memory.events', { id: confirmedAgentFact.id }),
+            'not_found',
+          );
+          assert.deepEqual(await invoke(isolatedScopeAgent.client, 'memory.list', {}), []);
+          assert.deepEqual(
+            (
+              await invoke(isolatedScopeAgent.client, 'memory.search', {
+                query: 'ledger checkpoint',
+              })
+            ).items,
+            [],
+          );
+
+          // 10. Soft-delete via foundation.entities.deleted_at + revision bump + event.
+          const deleted = await invoke(memFixture.owner, 'memory.delete', {
+            id: confirmedAgentFact.id,
+            revision: confirmedAgentFact.revision,
+            reason: 'Retiring verified test entry',
+          });
+          assert.equal(deleted.deleted, true);
+          assert.equal(deleted.revision, confirmedAgentFact.revision + 1);
+          await reject(
+            () => invoke(memFixture.owner, 'memory.get', { id: confirmedAgentFact.id }),
+            'not_found',
+          );
+          const deletedIncluded = await invoke(memFixture.owner, 'memory.get', {
+            id: confirmedAgentFact.id,
+            includeDeleted: true,
+          });
+          assert.ok(deletedIncluded.deletedAt);
+
+          // 11. Native backup, verify, and restore of projects+memory database.
+          const backupDir = resolve(base, 'code-memory-backup');
+          const backedUp = await cli(['backup', '--output', backupDir], memFixture.adminUrl);
+          assert.deepEqual(backedUp.modules.sort(), ['foundation', 'memory', 'projects']);
+          const verified = await cli(['backup-verify', '--file', backupDir]);
+          assert.equal(verified.verified, true);
+          const restoredDb = `sift_code_memory_restored_${runId}`;
+          const restored = await cli(
+            ['restore', '--file', backupDir, '--database', restoredDb],
+            adminBase,
+          );
+          fixtures.push({ db: restoredDb });
+          assert.equal(restored.integrity, 'verified');
+          assert.deepEqual(restored.modules.sort(), ['foundation', 'memory', 'projects']);
+        } finally {
+          await rm(repoDir, { recursive: true, force: true }).catch(() => {});
+          await db.end();
+          await stop(memFixture);
+        }
+      },
+    );
   } finally {
     for (const f of fixtures) await stop(f);
     const admin = new Pool({ connectionString: adminBase });

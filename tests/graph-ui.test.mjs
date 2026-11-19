@@ -139,6 +139,17 @@ test('graph-ui server serves HTML, DAG API, harness sessions, deep links, fork, 
     assert.match(html, /Copy Link/);
     assert.match(html, /Linked Harness Sessions/);
     assert.match(html, /harness-chip/);
+    assert.match(html, /new EventSource\('\/api\/events'\)/);
+    assert.match(html, /id="searchInput"/);
+    assert.match(html, /id="hideDoneBtn"/);
+    assert.match(html, /id="sseChip"/);
+    assert.match(html, /Claimability/);
+    assert.match(html, /claim-badge/);
+    assert.equal(
+      /setInterval\([\s\S]*?,\s*3000\s*\)/.test(html),
+      false,
+      'Unconditional 3s polling must be replaced with SSE',
+    );
     assert.equal(
       /window\.(prompt|confirm|alert)\s*\(/.test(html),
       false,
@@ -147,6 +158,57 @@ test('graph-ui server serves HTML, DAG API, harness sessions, deep links, fork, 
     const scriptMatch = html.match(/<script>([\s\S]*?)<\/script>/);
     assert.ok(scriptMatch, 'Expected inline script block');
     new vm.Script(scriptMatch[1]);
+
+    // Verify inline search & archive helpers
+    const matchesSearchMatch = scriptMatch[1].match(
+      /function matchesSearch\(node, query\) \{[\s\S]*?\n  \}/,
+    );
+    assert.ok(matchesSearchMatch, 'Expected matchesSearch helper');
+    const matchesSearch = vm.runInNewContext(`(${matchesSearchMatch[0]})`, {});
+    assert.equal(
+      matchesSearch(
+        {
+          id: '10000000-0000-4000-8000-000000000006',
+          title: 'Batched SQL',
+          description: 'Zero N+1',
+        },
+        'batched',
+      ),
+      true,
+    );
+    assert.equal(
+      matchesSearch(
+        {
+          id: '10000000-0000-4000-8000-000000000006',
+          title: 'Batched SQL',
+          description: 'Zero N+1',
+        },
+        'n+1',
+      ),
+      true,
+    );
+    assert.equal(
+      matchesSearch(
+        {
+          id: '10000000-0000-4000-8000-000000000006',
+          title: 'Batched SQL',
+          description: 'Zero N+1',
+        },
+        '10000000',
+      ),
+      true,
+    );
+    assert.equal(
+      matchesSearch(
+        {
+          id: '10000000-0000-4000-8000-000000000006',
+          title: 'Batched SQL',
+          description: 'Zero N+1',
+        },
+        'unrelated',
+      ),
+      false,
+    );
 
     // Verify inline isSafeDeepLink guard permits only safe schemes
     const safeFnMatch = scriptMatch[1].match(/function isSafeDeepLink\(raw\) \{[\s\S]*?\n  \}/);
@@ -252,6 +314,45 @@ test('graph-ui server serves HTML, DAG API, harness sessions, deep links, fork, 
     const l6After = afterFork.data.nodes.find((n) => n.id === l6.id);
     assert.equal(l6After.uiState, 'waiting');
     assert.deepEqual(l6After.waiting, { satisfied: 0, total: 2 });
+    assert.equal(l6After.claimability.state, 'waiting');
+    assert.equal(l6After.claimability.blockedBy.length, 2);
+
+    // Verify demo mode /api/events SSE streams update frames on demo mutations
+    const sseAbort = new AbortController();
+    const sseRes = await fetch(runtime.url + '/api/events', { signal: sseAbort.signal });
+    assert.equal(sseRes.status, 200);
+    assert.match(sseRes.headers.get('content-type') || '', /text\/event-stream/);
+    const reader = sseRes.body.getReader();
+    const decoder = new TextDecoder();
+    let sseBuf = '';
+    const readUntil = async (predicate, timeoutMs = 4000) => {
+      const deadline = Date.now() + timeoutMs;
+      while (!predicate(sseBuf)) {
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) throw new Error(`Timed out waiting for SSE data. Buffer: ${sseBuf}`);
+        const { done, value } = await Promise.race([
+          reader.read(),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('SSE read timeout')), remaining)),
+        ]);
+        if (done) break;
+        sseBuf += decoder.decode(value, { stream: true });
+      }
+      return sseBuf;
+    };
+
+    await readUntil((buf) => buf.includes(': connected'));
+    const createRes = await fetch(runtime.url + '/api/work/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: 'SSE Demo Mutation Probe',
+        description: 'Verify demo EventEmitter drives /api/events',
+        steps: [{ key: 'verify', title: 'Check SSE', required: true }],
+      }),
+    });
+    assert.equal(createRes.status, 200);
+    await readUntil((buf) => buf.includes('event: update') && buf.includes('"work.create"'));
+    sseAbort.abort();
   } finally {
     await runtime.close();
   }
@@ -260,9 +361,29 @@ test('graph-ui server serves HTML, DAG API, harness sessions, deep links, fork, 
 test('graph-ui live mode loads harness.session objects and degrades cleanly when extensions are disabled', async () => {
   const workId = '7f1aaf41-07b4-49d8-ad42-7d24af9093d2';
   const sessionId = '40000000-0000-4000-8000-000000000001';
+  const liveToken = 'live-test-token-value-with-sufficient-length-32chars';
   let extensionsEnabled = true;
+  const upstreamSseResponses = new Set();
 
   const apiServer = createServer((req, res) => {
+    if (req.method === 'GET' && req.url === '/v1/events') {
+      if (req.headers.authorization !== `Bearer ${liveToken}`) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: { code: 'unauthorized', message: 'Unauthorized' } }));
+        return;
+      }
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+      });
+      res.write(': connected\n\n');
+      upstreamSseResponses.add(res);
+      req.on('close', () => {
+        upstreamSseResponses.delete(res);
+      });
+      return;
+    }
     const chunks = [];
     req.on('data', (chunk) => chunks.push(chunk));
     req.on('end', () => {
@@ -385,7 +506,46 @@ test('graph-ui live mode loads harness.session objects and degrades cleanly when
     const workFallback = await (await fetch(`${runtime.url}/api/work/${workId}`)).json();
     assert.equal(workFallback.mode, 'live');
     assert.deepEqual(workFallback.sessions, []);
+
+    // Live mode /api/events proxies upstream /v1/events with bearer auth and never exposes token
+    const liveSseAbort = new AbortController();
+    const liveSseRes = await fetch(runtime.url + '/api/events', { signal: liveSseAbort.signal });
+    assert.equal(liveSseRes.status, 200);
+    assert.match(liveSseRes.headers.get('content-type') || '', /text\/event-stream/);
+    const liveReader = liveSseRes.body.getReader();
+    const liveDecoder = new TextDecoder();
+    let liveBuf = '';
+    const readLiveUntil = async (predicate, timeoutMs = 4000) => {
+      const deadline = Date.now() + timeoutMs;
+      while (!predicate(liveBuf)) {
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) throw new Error(`Timed out waiting for live SSE. Buffer: ${liveBuf}`);
+        const { done, value } = await Promise.race([
+          liveReader.read(),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('Live SSE timeout')), remaining)),
+        ]);
+        if (done) break;
+        liveBuf += liveDecoder.decode(value, { stream: true });
+      }
+      return liveBuf;
+    };
+
+    await readLiveUntil((buf) => buf.includes(': connected'));
+    assert.equal(upstreamSseResponses.size, 1);
+    for (const upstreamRes of upstreamSseResponses) {
+      upstreamRes.write(
+        'event: update\ndata: {"operation":"work.accept","module":"work","scopeId":null}\n\n',
+      );
+    }
+    await readLiveUntil((buf) => buf.includes('event: update') && buf.includes('"work.accept"'));
+    assert.equal(
+      liveBuf.includes(liveToken),
+      false,
+      'Sidecar bearer token must never leak to browser SSE stream',
+    );
+    liveSseAbort.abort();
   } finally {
+    for (const upstreamRes of upstreamSseResponses) upstreamRes.end();
     await runtime.close();
     await new Promise((resolveClose) => apiServer.close(resolveClose));
     await rm(dir, { recursive: true, force: true });

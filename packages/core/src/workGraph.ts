@@ -9,6 +9,8 @@ import {
 export type WorkUiState =
   'ready' | 'waiting' | 'active' | 'needs_you' | 'done' | 'failed' | 'cancelled';
 
+export type WorkPriority = 'low' | 'normal' | 'high' | 'urgent';
+
 export interface WorkGraphLink {
   target_id: string;
   relation: string;
@@ -19,6 +21,9 @@ export interface WorkGraphNodeInput {
   revision: number;
   title: string;
   description: string;
+  rank?: number;
+  priority?: WorkPriority;
+  labels?: string[];
   status: string;
   plan_version: number;
   summary: string | null;
@@ -44,6 +49,9 @@ export interface WorkGraphNode {
   revision: number;
   title: string;
   description: string;
+  rank: number;
+  priority: WorkPriority;
+  labels: string[];
   status: string;
   uiState: WorkUiState;
   kind: 'thread' | 'leaf';
@@ -266,6 +274,9 @@ export function buildWorkGraph(
       revision: raw.revision,
       title: raw.title,
       description: raw.description,
+      rank: raw.rank ?? 0,
+      priority: raw.priority ?? 'normal',
+      labels: raw.labels ? [...raw.labels] : [],
       status: raw.status,
       uiState,
       kind: preds.length === 0 ? 'leaf' : 'thread',
@@ -394,6 +405,7 @@ export function buildWorkGraph(
     .sort((a, b) => {
       if (b.unblocksCount !== a.unblocksCount) return b.unblocksCount - a.unblocksCount;
       if (a.uiState !== b.uiState) return a.uiState === 'needs_you' ? -1 : 1;
+      if (a.rank !== b.rank) return a.rank - b.rank;
       return a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id);
     })
     .map((n) => n.id);

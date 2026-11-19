@@ -6,9 +6,29 @@ export const moduleIds = [
   'work',
   'planning',
   'extensions',
+  'memory',
 ] as const;
 export type ModuleId = (typeof moduleIds)[number];
 export const moduleSchema = z.enum(moduleIds);
+export const memoryKinds = [
+  'invariant',
+  'architecture',
+  'decision',
+  'gotcha',
+  'convention',
+  'interface',
+] as const;
+export type MemoryKind = (typeof memoryKinds)[number];
+export const memoryKindSchema = z.enum(memoryKinds);
+export const memoryStatuses = [
+  'unreviewed',
+  'confirmed',
+  'needs_review',
+  'rejected',
+  'superseded',
+] as const;
+export type MemoryStatus = (typeof memoryStatuses)[number];
+export const memoryStatusSchema = z.enum(memoryStatuses);
 export const searchDomains = ['note', 'task', 'project', 'object'] as const;
 export type SearchDomain = (typeof searchDomains)[number];
 export const searchDomainSchema = z.enum(searchDomains);
@@ -58,6 +78,19 @@ export const operations = {
     z.object({ module: moduleSchema, enabled: z.boolean() }).strict(),
   ),
   'schema.inspect': op('foundation', false, false, z.object({}).strict()),
+  'links.graph': op(
+    'foundation',
+    false,
+    false,
+    z
+      .object({
+        id,
+        depth: z.number().int().min(1).max(3).default(2),
+        maxNodes: z.number().int().min(1).max(100).default(50),
+        includeDeleted: z.boolean().default(false),
+      })
+      .strict(),
+  ),
   // Lease holders can resolve custody without permission to read work content.
   'work.lease': op('work', false, false, z.object({ id }).strict()),
   'projects.create': op(
@@ -214,6 +247,13 @@ export const operations = {
       .object({
         title,
         description: text.default(''),
+        rank: z.number().int().min(-1_000_000).max(1_000_000).default(0),
+        priority: z.enum(['low', 'normal', 'high', 'urgent']).default('normal'),
+        labels: z
+          .array(z.string().trim().min(1).max(64))
+          .max(30)
+          .transform((items) => [...new Set(items)])
+          .default([]),
         projectId: id.optional(),
         taskId: id.optional(),
         contextIds: z.array(id).max(100).default([]),
@@ -322,7 +362,33 @@ export const operations = {
     'work',
     true,
     true,
-    z.object({ id, revision, title, description: text, reason: title }).strict(),
+    z
+      .object({
+        id,
+        revision,
+        title: title.optional(),
+        description: text.optional(),
+        steps: z.array(step).min(1).max(50).optional(),
+        rank: z.number().int().min(-1_000_000).max(1_000_000).optional(),
+        priority: z.enum(['low', 'normal', 'high', 'urgent']).optional(),
+        labels: z
+          .array(z.string().trim().min(1).max(64))
+          .max(30)
+          .transform((items) => [...new Set(items)])
+          .optional(),
+        reason: title,
+      })
+      .strict()
+      .refine(
+        (v) =>
+          v.title !== undefined ||
+          v.description !== undefined ||
+          v.steps !== undefined ||
+          v.rank !== undefined ||
+          v.priority !== undefined ||
+          v.labels !== undefined,
+        { message: 'At least one mutable field must be provided' },
+      ),
   ),
   'work.delete': op('work', true, true, remove),
   'work.restore': op('work', true, true, remove),
@@ -410,6 +476,114 @@ export const operations = {
     z.object({ type: key, source: ref, target: ref }).strict(),
   ),
   'relations.list': op('extensions', false, false, z.object({ id, ...page }).strict()),
+  'memory.store': op(
+    'memory',
+    true,
+    false,
+    z
+      .object({
+        projectId: id,
+        title,
+        summary: z.string().trim().min(1).max(4000),
+        kind: memoryKindSchema,
+        paths: z.array(z.string().trim().min(1).max(1024)).max(50).default([]),
+        symbols: z.array(z.string().trim().min(1).max(256)).max(50).default([]),
+        sourceCommit: z.string().trim().min(1).max(128).optional(),
+        fileHashes: z
+          .record(z.string().trim().min(1).max(1024), z.string().regex(/^[0-9a-f]{64}$/i))
+          .default({}),
+        supersedesId: id.optional(),
+      })
+      .strict(),
+  ),
+  'memory.get': op(
+    'memory',
+    false,
+    false,
+    z
+      .object({
+        id,
+        includeDeleted: z.boolean().default(false),
+        includeEventCount: z.boolean().default(true),
+      })
+      .strict(),
+  ),
+  'memory.list': op(
+    'memory',
+    false,
+    false,
+    z
+      .object({
+        ...page,
+        projectId: id.optional(),
+        status: memoryStatusSchema.optional(),
+        kind: memoryKindSchema.optional(),
+        pathPrefix: z.string().trim().min(1).max(1024).optional(),
+        includeDeleted: z.boolean().default(false),
+      })
+      .strict(),
+  ),
+  'memory.search': op(
+    'memory',
+    false,
+    false,
+    z
+      .object({
+        query: z.string().trim().min(1).max(500),
+        projectId: id.optional(),
+        paths: z.array(z.string().trim().min(1).max(1024)).max(50).optional(),
+        kind: memoryKindSchema.optional(),
+        statuses: z.array(memoryStatusSchema).min(1).max(5).optional(),
+        limit: z.number().int().min(1).max(50).default(20),
+        includeDeleted: z.boolean().default(false),
+      })
+      .strict(),
+  ),
+  'memory.events': op('memory', false, false, z.object({ id, ...page }).strict()),
+  'memory.mark_needs_review': op(
+    'memory',
+    true,
+    false,
+    z.object({ id, revision, reason: title }).strict(),
+  ),
+  'memory.review': op(
+    'memory',
+    true,
+    true,
+    z
+      .object({
+        id,
+        revision,
+        decision: z.enum(['confirmed', 'rejected']),
+        note: text.default(''),
+      })
+      .strict(),
+  ),
+  'memory.detect_stale': op(
+    'memory',
+    true,
+    false,
+    z
+      .object({
+        projectId: id,
+        pathCommits: z
+          .record(z.string().trim().min(1).max(1024), z.string().trim().min(1).max(128).nullable())
+          .optional(),
+        fileHashes: z
+          .record(
+            z.string().trim().min(1).max(1024),
+            z
+              .string()
+              .regex(/^[0-9a-f]{64}$/i)
+              .nullable(),
+          )
+          .optional(),
+        reason: title.optional(),
+        dryRun: z.boolean().default(false),
+      })
+      .strict(),
+  ),
+  'memory.delete': op('memory', true, false, remove),
 } as const;
 export type Operation = keyof typeof operations;
 export type OperationInput<K extends Operation> = z.input<(typeof operations)[K]['input']>;
