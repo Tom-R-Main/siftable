@@ -648,7 +648,7 @@ export function renderGraphUiHtml(): string {
     if (!c) return \`v\${node.planVersion}\`;
     if (c.state === 'commands_passed') return \`v\${node.planVersion} · passed\`;
     if (c.state === 'failed') return \`v\${node.planVersion} · failed\`;
-    return \`v\${node.planVersion} · \${c.passedRequiredCount}/\${c.requiredCount} steps\`;
+    return \`v\${node.planVersion} · \${c.passed ?? 0}/\${c.required ?? 0} steps\`;
   }
 
   function computeLayout(nodes, edges) {
