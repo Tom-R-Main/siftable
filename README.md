@@ -161,7 +161,7 @@ docker compose start
 
 ## Scope and limits
 
-- **Local extraction, private packages**: All workspace packages are `"private": true`; package publication and root-license selection are pending.
+- **Local extraction, private packages**: All workspace packages are `"private": true` and unpublished on npm. Source is licensed under [Apache-2.0](LICENSE).
 - **API role separation, not OS sandboxing**: `.local/worker.json` cannot self-accept work, but credentials do not isolate processes running as the same OS user. Compose `server` binds `127.0.0.1:${SIFT_PORT:-8088}` under fixed project name `siftable-headless` (one install per Docker daemon) and is not an outbound firewall.
 - **Submitter-asserted evidence**: `work.evidence` records the submitter's statement and provenance; Siftable does not execute submitted commands or treat `commands_passed` as human acceptance.
 - **Bounded formats and transport**: Stdio MCP only (no HTTP MCP or MCP Apps). `work.artifacts.add` stores bounded text up to `64,000` characters with no binary or object-store attachments.
