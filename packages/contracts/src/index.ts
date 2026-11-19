@@ -372,6 +372,7 @@ export class SiftError extends Error {
     public status: number,
     public code: string,
     message: string,
+    public suggestions?: string[],
   ) {
     super(message);
   }
