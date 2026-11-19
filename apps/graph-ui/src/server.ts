@@ -4,7 +4,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { z, ZodError } from 'zod';
-import { SiftClient } from '@siftable/client';
+import { SiftClient, readCredentials, type Credentials } from '@siftable/client';
 import { SiftError } from '@siftable/contracts';
 import { DemoWorkStore, type HarnessSession } from './demoStore.js';
 import { renderGraphUiHtml } from './uiHtml.js';
@@ -126,24 +126,32 @@ export async function startGraphUiServer(options: GraphUiOptions = {}) {
 
   const demo = new DemoWorkStore();
   let client: SiftClient | null = null;
+  let liveCredentials: Credentials | null = null;
   let liveReady = false;
+  const activeSseCleanups = new Set<() => void>();
 
   async function tryConnectLive(): Promise<boolean> {
     if (forceDemo) {
       liveReady = false;
+      liveCredentials = null;
       return false;
     }
     if (!existsSync(configPath)) {
       liveReady = false;
+      liveCredentials = null;
       return false;
     }
     try {
-      client = await SiftClient.fromFile(configPath);
-      await client.catalog();
+      const creds = await readCredentials(configPath);
+      const nextClient = await SiftClient.fromFile(configPath);
+      await nextClient.catalog();
+      client = nextClient;
+      liveCredentials = creds;
       liveReady = true;
       return true;
     } catch {
       client = null;
+      liveCredentials = null;
       liveReady = false;
       return false;
     }
@@ -162,6 +170,7 @@ export async function startGraphUiServer(options: GraphUiOptions = {}) {
       } catch (err) {
         if (err instanceof SiftError) throw err;
         liveReady = false;
+        liveCredentials = null;
         client = null;
       }
     }
@@ -196,6 +205,120 @@ export async function startGraphUiServer(options: GraphUiOptions = {}) {
   app.post('/api/reconnect', async (_req, res) => {
     const ok = await tryConnectLive();
     res.json({ mode: ok ? 'live' : 'demo' });
+  });
+
+  app.get('/api/events', async (req, res) => {
+    if (!liveReady && !forceDemo) await tryConnectLive();
+
+    res.status(200);
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders();
+
+    let closed = false;
+    const abortController = new AbortController();
+    let unsubscribeDemo: (() => void) | null = null;
+
+    const heartbeat = setInterval(() => {
+      if (closed || res.writableEnded) return;
+      try {
+        res.write(': heartbeat\n\n');
+      } catch {
+        cleanup();
+      }
+    }, 25_000);
+    heartbeat.unref();
+
+    const cleanup = () => {
+      if (closed) return;
+      closed = true;
+      clearInterval(heartbeat);
+      activeSseCleanups.delete(cleanup);
+      if (unsubscribeDemo) {
+        unsubscribeDemo();
+        unsubscribeDemo = null;
+      }
+      abortController.abort();
+      if (!res.writableEnded) {
+        res.end();
+      }
+    };
+
+    activeSseCleanups.add(cleanup);
+    req.on('close', cleanup);
+    res.on('close', cleanup);
+
+    if (!liveReady || !liveCredentials) {
+      res.write(': connected\n\n');
+      unsubscribeDemo = demo.onUpdate((ev) => {
+        if (closed || res.writableEnded) return;
+        try {
+          res.write(`event: update\ndata: ${JSON.stringify(ev)}\n\n`);
+        } catch {
+          cleanup();
+        }
+      });
+      return;
+    }
+
+    const upstreamUrl = new URL('/v1/events', liveCredentials.apiUrl);
+    const upstreamToken = liveCredentials.token;
+    try {
+      const upstream = await fetch(upstreamUrl, {
+        headers: {
+          Authorization: `Bearer ${upstreamToken}`,
+          Accept: 'text/event-stream',
+        },
+        redirect: 'error',
+        signal: abortController.signal,
+      });
+      if (!upstream.ok || !upstream.body) {
+        cleanup();
+        return;
+      }
+      if (closed || res.writableEnded) {
+        cleanup();
+        return;
+      }
+      res.write(': connected\n\n');
+
+      const reader = upstream.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (!closed) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (closed || res.writableEnded) break;
+        buffer += decoder.decode(value, { stream: true });
+        buffer = buffer.replace(/\r\n/g, '\n');
+        let sep = buffer.indexOf('\n\n');
+        while (sep !== -1) {
+          const block = buffer.slice(0, sep);
+          buffer = buffer.slice(sep + 2);
+          sep = buffer.indexOf('\n\n');
+          if (!block.trim()) continue;
+          let eventName = '';
+          const dataLines: string[] = [];
+          for (const line of block.split('\n')) {
+            if (line.startsWith(':')) continue;
+            if (line.startsWith('event:')) {
+              eventName = line.slice(6).trim();
+            } else if (line.startsWith('data:')) {
+              dataLines.push(line.slice(5).trimStart());
+            }
+          }
+          if (eventName === 'update' && dataLines.length > 0 && !closed && !res.writableEnded) {
+            res.write(`event: update\ndata: ${dataLines.join('\n')}\n\n`);
+          }
+        }
+      }
+    } catch {
+      // Upstream stream ended or aborted; let EventSource reconnect cleanly.
+    } finally {
+      cleanup();
+    }
   });
 
   app.get('/api/graph', async (req, res) => {
@@ -366,6 +489,9 @@ export async function startGraphUiServer(options: GraphUiOptions = {}) {
     port: actualPort,
     url: `http://${host}:${actualPort}`,
     close: async () => {
+      for (const cleanup of [...activeSseCleanups]) {
+        cleanup();
+      }
       await new Promise<void>((resolveClose, rejectClose) =>
         server.close((e) => (e ? rejectClose(e) : resolveClose())),
       );

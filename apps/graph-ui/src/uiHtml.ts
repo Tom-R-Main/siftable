@@ -60,6 +60,19 @@ export function renderGraphUiHtml(): string {
   }
   .mode-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
   .mode-chip.demo .mode-dot { background: var(--amber); }
+  .sse-chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 500;
+    background: var(--bg-pill); border: 1px solid var(--border); color: var(--text-dim);
+    white-space: nowrap;
+  }
+  .sse-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-dim); }
+  .sse-chip.connected { color: #86efac; border-color: rgba(34, 197, 94, 0.35); }
+  .sse-chip.connected .sse-dot { background: var(--green); }
+  .sse-chip.reconnecting { color: #fcd34d; border-color: rgba(245, 158, 11, 0.38); }
+  .sse-chip.reconnecting .sse-dot { background: var(--amber); }
+  .sse-chip.paused { color: var(--text-dim); }
+  .sse-chip.paused .sse-dot { background: var(--text-dim); }
 
   .nav-tabs { display: flex; align-items: center; gap: 6px; }
   .nav-tab {
@@ -114,6 +127,13 @@ export function renderGraphUiHtml(): string {
   }
   .filter-select { width: auto; min-width: 130px; }
   .select-wrap select:focus, .filter-select:focus { border-color: var(--orange); }
+  .search-input {
+    height: 32px; width: 220px; min-width: 140px; max-width: 280px;
+    padding: 0 10px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--bg-elev); color: var(--text); font-size: 12.5px; outline: none;
+  }
+  .search-input::placeholder { color: var(--text-dim); }
+  .search-input:focus { border-color: var(--orange); }
   .toolbar-spacer { flex: 1; }
   .zoom-group { display: inline-flex; align-items: center; gap: 4px; }
   .zoom-label { font-family: var(--mono); font-size: 11px; color: var(--text-muted); min-width: 42px; text-align: center; }
@@ -217,8 +237,47 @@ export function renderGraphUiHtml(): string {
   .node-meta { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 11px; }
   .unblocks-tag { color: var(--orange); font-weight: 600; white-space: nowrap; }
   .harness-chips {
-    display: flex; align-items: center; gap: 5px; flex-wrap: nowrap; overflow: hidden;
+    display: flex; align-items: center; gap: 5px; flex-wrap: wrap; overflow: hidden;
   }
+  .card-badges {
+    display: flex; align-items: center; gap: 5px; flex-wrap: wrap;
+  }
+  .claim-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 6px; border-radius: 6px; font-size: 10px; font-weight: 600;
+    font-family: var(--mono); border: 1px solid var(--border);
+    background: var(--bg-pill); color: var(--text-muted); white-space: nowrap;
+  }
+  .claim-badge.danger {
+    background: var(--red-soft); border-color: rgba(239, 68, 68, 0.45); color: #fca5a5;
+  }
+  .claim-badge.warn {
+    background: var(--amber-soft); border-color: rgba(245, 158, 11, 0.45); color: #fcd34d;
+  }
+  .claim-badge.info {
+    background: var(--blue-soft); border-color: rgba(56, 189, 248, 0.4); color: #7dd3fc;
+  }
+  .claim-badge.muted {
+    background: rgba(148, 163, 184, 0.1); border-color: var(--border); color: var(--text-muted);
+  }
+  .claimability-box { display: flex; flex-direction: column; gap: 8px; }
+  .claimability-reason { font-size: 12.5px; line-height: 1.45; color: var(--text); }
+  .claimability-next {
+    font-size: 11.5px; color: var(--text-muted);
+    display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  }
+  .claimability-next code {
+    font-family: var(--mono); font-size: 11px; padding: 2px 6px;
+    border-radius: 5px; background: #0a0c10; border: 1px solid var(--border); color: #fdba74;
+  }
+  .blocker-item {
+    display: flex; flex-direction: column; gap: 4px;
+    padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border);
+    background: #0b0d12; margin-top: 6px; cursor: pointer;
+  }
+  .blocker-item:hover { border-color: var(--border-strong); background: #141821; }
+  .blocker-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+  .blocker-reason { font-size: 11.5px; color: var(--text-muted); line-height: 1.4; }
   .harness-chip {
     display: inline-flex; align-items: center; gap: 4px; max-width: 100%;
     padding: 2px 7px; border-radius: 6px; font-size: 10.5px; font-weight: 600;
@@ -403,6 +462,7 @@ export function renderGraphUiHtml(): string {
     <div class="topbar-left">
       <span class="brand" id="viewTitle">Graph</span>
       <span class="mode-chip" id="modeChip"><span class="mode-dot"></span><span id="modeText">Connecting</span></span>
+      <span class="sse-chip" id="sseChip" title="Live SSE stream status"><span class="sse-dot"></span><span id="sseText">SSE</span></span>
     </div>
     <nav class="nav-tabs">
       <button class="nav-tab" data-tab="next">Next <span class="badge" id="badgeNext">0</span></button>
@@ -410,7 +470,7 @@ export function renderGraphUiHtml(): string {
       <button class="nav-tab active" data-tab="graph">Graph <span class="badge" id="badgeGraph">0</span></button>
     </nav>
     <div class="topbar-right">
-      <button class="icon-btn active" id="pollToggle" title="Auto-refresh every 3s">Live</button>
+      <button class="icon-btn active" id="pollToggle" title="Toggle live SSE updates">Live</button>
       <button class="icon-btn" id="refreshBtn" title="Refresh now">↻</button>
       <button class="primary-btn circle" id="createBtn" title="Create work item">+</button>
     </div>
@@ -426,7 +486,9 @@ export function renderGraphUiHtml(): string {
       <select id="rootSelect" aria-label="Filter by root"></select>
     </div>
     <select id="projectSelect" class="filter-select" style="display:none" aria-label="Filter by project"></select>
+    <input type="search" id="searchInput" class="search-input" placeholder="Search title, description, or ID..." aria-label="Search work items" />
     <button class="icon-btn" id="frontierOnlyBtn">Frontier only</button>
+    <button class="icon-btn" id="hideDoneBtn" title="Hide done and cancelled work items">Hide done</button>
     <div class="toolbar-spacer"></div>
     <div class="zoom-group" id="zoomControls">
       <button class="icon-btn" id="zoomOutBtn">−</button>
@@ -533,7 +595,9 @@ export function renderGraphUiHtml(): string {
     sessionsByWorkId: {},
     selectedRootId: initialParams.get('rootId') || '',
     selectedProjectId: initialParams.get('projectId') || '',
+    searchQuery: initialParams.get('q') || '',
     frontierOnly: false,
+    hideDone: initialParams.get('hideDone') === '1',
     selectedWorkId: null,
     selectedDetail: null,
     selectedSessions: [],
@@ -542,7 +606,11 @@ export function renderGraphUiHtml(): string {
     activeAction: null,
     fallbackPromptText: '',
     fallbackLinkText: '',
-    autoPoll: true,
+    liveEnabled: true,
+    sseStatus: 'connecting',
+    eventSource: null,
+    refreshDebounceTimer: null,
+    fallbackPollTimer: null,
     transform: { x: 40, y: 40, scale: 1 },
     hasFittedOnce: false,
   };
@@ -567,6 +635,10 @@ export function renderGraphUiHtml(): string {
     else url.searchParams.delete('rootId');
     if (state.selectedWorkId) url.searchParams.set('workId', state.selectedWorkId);
     else url.searchParams.delete('workId');
+    if (state.searchQuery.trim()) url.searchParams.set('q', state.searchQuery.trim());
+    else url.searchParams.delete('q');
+    if (state.hideDone) url.searchParams.set('hideDone', '1');
+    else url.searchParams.delete('hideDone');
     const qs = url.searchParams.toString();
     const nextUrl = url.pathname + (qs ? \`?\${qs}\` : '') + url.hash;
     window.history.replaceState(null, '', nextUrl);
@@ -611,6 +683,62 @@ export function renderGraphUiHtml(): string {
       chips.push(\`<span class="harness-chip other">+\${sessions.length - 2}</span>\`);
     }
     return \`<div class="harness-chips">\${chips.join('')}</div>\`;
+  }
+
+  function claimabilityPillClass(claimState) {
+    if (claimState === 'ready') return 'ready';
+    if (claimState === 'dependency_failed') return 'failed';
+    if (claimState === 'lease_expired' || claimState === 'blocked' || claimState === 'in_review')
+      return 'needs_you';
+    if (claimState === 'leased') return 'active';
+    return '';
+  }
+
+  function renderClaimabilityBadges(node) {
+    const c = node.claimability;
+    if (!c) return '';
+    const badges = [];
+    if (c.state === 'dependency_failed') {
+      badges.push(
+        \`<span class="claim-badge danger" title="\${esc(c.reason)}">dep failed</span>\`,
+      );
+    } else if (c.state === 'lease_expired') {
+      badges.push(
+        \`<span class="claim-badge warn" title="\${esc(c.reason)}">lease expired</span>\`,
+      );
+    } else if (c.state === 'leased') {
+      badges.push(\`<span class="claim-badge info" title="\${esc(c.reason)}">leased</span>\`);
+    } else if (c.state === 'blocked') {
+      badges.push(\`<span class="claim-badge warn" title="\${esc(c.reason)}">blocked</span>\`);
+    }
+    if (Array.isArray(c.blockedBy) && c.blockedBy.length > 0) {
+      const tip = c.blockedBy.map((b) => \`\${b.title || b.workId}: \${b.reason}\`).join(' | ');
+      badges.push(
+        \`<span class="claim-badge muted" title="\${esc(tip)}">blocked by \${c.blockedBy.length}</span>\`,
+      );
+    }
+    if (!badges.length) return '';
+    return \`<div class="card-badges">\${badges.join('')}</div>\`;
+  }
+
+  function isArchivedNode(node) {
+    return (
+      node.uiState === 'done' ||
+      node.uiState === 'cancelled' ||
+      node.status === 'done' ||
+      node.status === 'cancelled'
+    );
+  }
+
+  function matchesSearch(node, query) {
+    const q = String(query || '')
+      .trim()
+      .toLowerCase();
+    if (!q) return true;
+    if (String(node.title || '').toLowerCase().includes(q)) return true;
+    if (String(node.description || '').toLowerCase().includes(q)) return true;
+    if (String(node.id || '').toLowerCase().startsWith(q)) return true;
+    return false;
   }
 
   let toastTimer = null;
@@ -684,9 +812,10 @@ export function renderGraphUiHtml(): string {
       layer.forEach((n, i) => orderIdx.set(n.id, i));
     }
 
-    // Measure widest row to center all rows cleanly.
+    // Measure widest row to center all rows cleanly, compacting empty layers when filtered.
+    const presentDepths = [...layers.keys()].sort((a, b) => a - b);
     let maxRowWidth = 0;
-    for (let d = 0; d <= maxDepth; d++) {
+    for (const d of presentDepths) {
       const count = (layers.get(d) || []).length;
       if (count > 0) {
         maxRowWidth = Math.max(maxRowWidth, count * CARD_W + (count - 1) * COL_GAP);
@@ -696,18 +825,19 @@ export function renderGraphUiHtml(): string {
     const positions = new Map();
     const padX = 60;
     const padY = 48;
-    for (let d = 0; d <= maxDepth; d++) {
+    presentDepths.forEach((d, rowIndex) => {
       const layer = layers.get(d) || [];
       const rowW = layer.length * CARD_W + Math.max(0, layer.length - 1) * COL_GAP;
       const startX = padX + (maxRowWidth - rowW) / 2;
-      const y = padY + d * (CARD_H + ROW_GAP);
+      const y = padY + rowIndex * (CARD_H + ROW_GAP);
       layer.forEach((n, i) => {
         positions.set(n.id, { x: startX + i * (CARD_W + COL_GAP), y });
       });
-    }
+    });
 
+    const rowCount = Math.max(1, presentDepths.length);
     const totalW = maxRowWidth + padX * 2;
-    const totalH = (maxDepth + 1) * CARD_H + maxDepth * ROW_GAP + padY * 2;
+    const totalH = rowCount * CARD_H + (rowCount - 1) * ROW_GAP + padY * 2;
     return { positions, width: totalW, height: totalH };
   }
 
@@ -752,19 +882,72 @@ export function renderGraphUiHtml(): string {
   function visibleGraphData() {
     const g = state.graph;
     if (!g) return { nodes: [], edges: [] };
-    if (!state.frontierOnly) return { nodes: g.nodes, edges: g.edges };
-    const keep = new Set();
     const byId = new Map(g.nodes.map((n) => [n.id, n]));
-    for (const n of g.nodes) {
-      if (n.uiState === 'ready' || n.uiState === 'needs_you' || n.uiState === 'active') {
-        keep.add(n.id);
-        for (const dep of n.dependentIds) keep.add(dep);
+    let keep = new Set(g.nodes.map((n) => n.id));
+
+    if (state.hideDone) {
+      const nextKeep = new Set();
+      const preserveAncestors = (id) => {
+        const stack = [id];
+        while (stack.length) {
+          const cur = stack.pop();
+          const node = byId.get(cur);
+          if (!node) continue;
+          for (const depId of node.dependentIds || []) {
+            if (!nextKeep.has(depId) && byId.has(depId)) {
+              nextKeep.add(depId);
+              stack.push(depId);
+            }
+          }
+        }
+      };
+      for (const n of g.nodes) {
+        if (!isArchivedNode(n) || n.id === state.selectedWorkId) {
+          nextKeep.add(n.id);
+          preserveAncestors(n.id);
+        }
       }
+      keep = nextKeep;
     }
+
+    if (state.frontierOnly) {
+      const nextKeep = new Set();
+      for (const id of keep) {
+        const n = byId.get(id);
+        if (!n) continue;
+        if (n.uiState === 'ready' || n.uiState === 'needs_you' || n.uiState === 'active') {
+          nextKeep.add(n.id);
+          for (const dep of n.dependentIds || []) {
+            if (keep.has(dep)) nextKeep.add(dep);
+          }
+        }
+      }
+      keep = nextKeep;
+    }
+
+    if (state.searchQuery.trim()) {
+      const nextKeep = new Set();
+      for (const id of keep) {
+        const n = byId.get(id);
+        if (n && matchesSearch(n, state.searchQuery)) {
+          nextKeep.add(n.id);
+        }
+      }
+      keep = nextKeep;
+    }
+
     return {
       nodes: g.nodes.filter((n) => keep.has(n.id)),
       edges: g.edges.filter((e) => keep.has(e.workId) && keep.has(e.predecessorId)),
     };
+  }
+
+  function filteredListNodes(nodes) {
+    return nodes.filter((n) => {
+      if (state.hideDone && isArchivedNode(n) && n.id !== state.selectedWorkId) return false;
+      if (!matchesSearch(n, state.searchQuery)) return false;
+      return true;
+    });
   }
 
   function renderGraph() {
@@ -776,6 +959,13 @@ export function renderGraphUiHtml(): string {
     if (!nodes.length) {
       nodesLayer.innerHTML = '';
       edgesLayer.innerHTML = '';
+      const hasAnyNodes = Boolean(state.graph && state.graph.nodes.length > 0);
+      const msgEl = emptyEl.querySelector('div');
+      if (msgEl) {
+        msgEl.textContent = hasAnyNodes
+          ? 'No work items match the current filters.'
+          : 'No work items yet.';
+      }
       emptyEl.style.display = 'flex';
       return;
     }
@@ -839,6 +1029,7 @@ export function renderGraphUiHtml(): string {
           </div>
           <div class="node-title">\${esc(n.title)}</div>
           \${renderHarnessChips(n.id)}
+          \${renderClaimabilityBadges(n)}
           <div class="node-footer">
             <span class="node-meta">\${esc(coverageText(n))}\${artBadge}</span>
             \${unblocksHtml}
@@ -867,7 +1058,7 @@ export function renderGraphUiHtml(): string {
     const el = $('nextContainer');
     if (!g) { el.innerHTML = ''; return; }
     const byId = new Map(g.nodes.map((n) => [n.id, n]));
-    const items = g.next.map((id) => byId.get(id)).filter(Boolean);
+    const items = filteredListNodes(g.next.map((id) => byId.get(id)).filter(Boolean));
     const needsYou = items.filter((n) => n.uiState === 'needs_you');
     const ready = items.filter((n) => n.uiState === 'ready');
 
@@ -892,7 +1083,11 @@ export function renderGraphUiHtml(): string {
     };
 
     if (!items.length) {
-      el.innerHTML = '<div class="empty-state">All frontier work is settled or running.</div>';
+      const msg =
+        state.searchQuery.trim() || state.hideDone
+          ? 'No frontier work items match the current filters.'
+          : 'All frontier work is settled or running.';
+      el.innerHTML = \`<div class="empty-state">\${esc(msg)}</div>\`;
       return;
     }
 
@@ -918,9 +1113,14 @@ export function renderGraphUiHtml(): string {
       el.innerHTML = '<div class="empty-state">No work items found.</div>';
       return;
     }
+    const items = filteredListNodes(g.nodes);
+    if (!items.length) {
+      el.innerHTML = '<div class="empty-state">No work items match the current filters.</div>';
+      return;
+    }
     el.innerHTML = \`<table class="tasks-table">
       <thead><tr><th>Work Item</th><th>Status</th><th>Waiting</th><th>Unblocks</th><th>Plan</th></tr></thead>
-      <tbody>\${g.nodes
+      <tbody>\${items
         .map(
           (n) => \`<tr data-id="\${esc(n.id)}">
             <td><strong>\${esc(n.title)}</strong></td>
@@ -1092,6 +1292,34 @@ export function renderGraphUiHtml(): string {
 
     if (d.description) {
       parts.push(\`<div class="card-box"><div class="card-box-head"><span>Description</span></div><div style="line-height:1.5;white-space:pre-wrap;color:var(--text)">\${esc(d.description)}</div></div>\`);
+    }
+
+    // Claimability diagnostics card
+    const claimability = d.claimability || node.claimability;
+    if (claimability) {
+      const blockerRows = (claimability.blockedBy || [])
+        .map((b) => {
+          const target = byId.get(b.workId);
+          const label = b.title || target?.title || b.workId.slice(0, 8);
+          const statusCls = b.status === 'failed' || b.status === 'cancelled' || b.status === 'deleted' ? 'failed' : '';
+          return \`<div class="blocker-item" data-jump="\${esc(b.workId)}">
+            <div class="blocker-top">
+              <span class="branch-title">\${esc(label)}</span>
+              <span class="status-pill \${statusCls}">\${esc(b.status)} · \${esc(b.gate)}</span>
+            </div>
+            <div class="blocker-reason">\${esc(b.reason)}</div>
+          </div>\`;
+        })
+        .join('');
+      parts.push(\`<div class="card-box claimability-box">
+        <div class="card-box-head">
+          <span>Claimability</span>
+          <span class="status-pill \${claimabilityPillClass(claimability.state)}">\${esc(claimability.state)}</span>
+        </div>
+        <div class="claimability-reason">\${esc(claimability.reason)}</div>
+        <div class="claimability-next"><span>Next action:</span><code>\${esc(claimability.nextAction)}</code></div>
+        \${blockerRows ? \`<div><div class="card-box-head" style="margin-top:4px;margin-bottom:2px"><span>Blocked by</span><span>\${claimability.blockedBy.length}</span></div>\${blockerRows}</div>\` : ''}
+      </div>\`);
     }
 
     // Actions bar
@@ -1463,7 +1691,98 @@ export function renderGraphUiHtml(): string {
     });
   });
 
+  function updateSseIndicator() {
+    const chip = $('sseChip');
+    const text = $('sseText');
+    if (!chip || !text) return;
+    chip.classList.remove('connected', 'reconnecting', 'paused');
+    if (state.sseStatus === 'connected') {
+      chip.classList.add('connected');
+      text.textContent = 'SSE live';
+    } else if (state.sseStatus === 'reconnecting') {
+      chip.classList.add('reconnecting');
+      text.textContent = 'Reconnecting';
+    } else if (state.sseStatus === 'paused') {
+      chip.classList.add('paused');
+      text.textContent = 'Paused';
+    } else {
+      text.textContent = 'SSE…';
+    }
+  }
+
+  function scheduleRefresh() {
+    clearTimeout(state.refreshDebounceTimer);
+    state.refreshDebounceTimer = setTimeout(() => {
+      state.refreshDebounceTimer = null;
+      refresh().catch(() => {});
+    }, 120);
+  }
+
+  function stopFallbackPoll() {
+    if (state.fallbackPollTimer) {
+      clearInterval(state.fallbackPollTimer);
+      state.fallbackPollTimer = null;
+    }
+  }
+
+  function startFallbackPoll() {
+    if (state.fallbackPollTimer || !state.liveEnabled) return;
+    state.fallbackPollTimer = setInterval(() => {
+      if (state.liveEnabled && !document.hidden) refresh().catch(() => {});
+    }, 10000);
+  }
+
+  function disconnectEvents() {
+    if (state.eventSource) {
+      state.eventSource.close();
+      state.eventSource = null;
+    }
+    stopFallbackPoll();
+    state.sseStatus = 'paused';
+    updateSseIndicator();
+  }
+
+  function connectEvents() {
+    if (!state.liveEnabled) {
+      disconnectEvents();
+      return;
+    }
+    if (state.eventSource) {
+      state.eventSource.close();
+      state.eventSource = null;
+    }
+    if (typeof EventSource === 'undefined') {
+      state.sseStatus = 'reconnecting';
+      updateSseIndicator();
+      startFallbackPoll();
+      return;
+    }
+    state.sseStatus = 'connecting';
+    updateSseIndicator();
+    const es = new EventSource('/api/events');
+    state.eventSource = es;
+    es.onopen = () => {
+      if (state.eventSource !== es) return;
+      state.sseStatus = 'connected';
+      stopFallbackPoll();
+      updateSseIndicator();
+    };
+    es.addEventListener('update', () => {
+      if (state.eventSource !== es || !state.liveEnabled) return;
+      scheduleRefresh();
+    });
+    es.onerror = () => {
+      if (state.eventSource !== es) return;
+      state.sseStatus = 'reconnecting';
+      updateSseIndicator();
+      startFallbackPoll();
+    };
+  }
+
   // Filters & Toolbar
+  $('searchInput').value = state.searchQuery;
+  $('hideDoneBtn').classList.toggle('active', state.hideDone);
+
   $('rootSelect').addEventListener('change', (e) => {
     state.selectedRootId = e.target.value;
     state.hasFittedOnce = false;
@@ -1477,20 +1796,42 @@ export function renderGraphUiHtml(): string {
     syncUrlParams();
     refresh();
   });
+  $('searchInput').addEventListener('input', (e) => {
+    state.searchQuery = e.target.value || '';
+    syncUrlParams();
+    renderGraph();
+    renderNext();
+    renderTasks();
+  });
   $('frontierOnlyBtn').addEventListener('click', () => {
     state.frontierOnly = !state.frontierOnly;
     $('frontierOnlyBtn').classList.toggle('active', state.frontierOnly);
     renderGraph();
   });
+  $('hideDoneBtn').addEventListener('click', () => {
+    state.hideDone = !state.hideDone;
+    $('hideDoneBtn').classList.toggle('active', state.hideDone);
+    syncUrlParams();
+    renderGraph();
+    renderNext();
+    renderTasks();
+  });
   $('pollToggle').addEventListener('click', () => {
-    state.autoPoll = !state.autoPoll;
-    $('pollToggle').classList.toggle('active', state.autoPoll);
-    $('pollToggle').textContent = state.autoPoll ? 'Live' : 'Paused';
+    state.liveEnabled = !state.liveEnabled;
+    $('pollToggle').classList.toggle('active', state.liveEnabled);
+    $('pollToggle').textContent = state.liveEnabled ? 'Live' : 'Paused';
+    if (state.liveEnabled) {
+      connectEvents();
+      refresh().catch(() => {});
+    } else {
+      disconnectEvents();
+    }
   });
   $('refreshBtn').addEventListener('click', () => refresh());
   $('retryLiveBtn').addEventListener('click', async () => {
     await api('/api/reconnect', { method: 'POST' });
     await refresh();
+    if (state.liveEnabled) connectEvents();
   });
 
   // Pan & Zoom on canvas
@@ -1592,11 +1933,9 @@ export function renderGraphUiHtml(): string {
     }
   });
 
-  // Initial load + auto-poll
+  // Initial load + live SSE stream
   refresh().catch((err) => showToast(err.message));
-  setInterval(() => {
-    if (state.autoPoll && !document.hidden) refresh().catch(() => {});
-  }, 3000);
+  connectEvents();
 })();
 </script>
 </body>

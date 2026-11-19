@@ -58,6 +58,19 @@ export const operations = {
     z.object({ module: moduleSchema, enabled: z.boolean() }).strict(),
   ),
   'schema.inspect': op('foundation', false, false, z.object({}).strict()),
+  'links.graph': op(
+    'foundation',
+    false,
+    false,
+    z
+      .object({
+        id,
+        depth: z.number().int().min(1).max(3).default(2),
+        maxNodes: z.number().int().min(1).max(100).default(50),
+        includeDeleted: z.boolean().default(false),
+      })
+      .strict(),
+  ),
   // Lease holders can resolve custody without permission to read work content.
   'work.lease': op('work', false, false, z.object({ id }).strict()),
   'projects.create': op(

@@ -2867,6 +2867,317 @@ test('standalone headless acceptance on real PostgreSQL and subprocess clients',
         assert.ok(ownerGet.description.includes('sk-proj-'));
       },
     );
+    await t.test(
+      'tasks workSummary rollup, bounded links.graph with RLS, and live GET /v1/events SSE',
+      async () => {
+        // 1. Planning-without-work returns zeroed workSummary cleanly without touching work.items
+        const planningOnly = await fixture('planning_no_work', ['projects', 'planning']);
+        try {
+          const pOnlyProj = await invoke(planningOnly.owner, 'projects.create', {
+            title: 'Planning Only Project',
+          });
+          const pOnlyTask = await invoke(planningOnly.owner, 'tasks.create', {
+            title: 'Task without work module',
+            projectId: pOnlyProj.id,
+          });
+          const pOnlyGot = await invoke(planningOnly.owner, 'tasks.get', { id: pOnlyTask.id });
+          assert.deepEqual(pOnlyGot.workSummary, {
+            total: 0,
+            done: 0,
+            active: 0,
+            ready: 0,
+            needsReview: 0,
+            blocked: 0,
+            failed: 0,
+          });
+          const pOnlyListed = await invoke(planningOnly.owner, 'tasks.list', {
+            projectId: pOnlyProj.id,
+          });
+          assert.equal(pOnlyListed.length, 1);
+          assert.deepEqual(pOnlyListed[0].workSummary, pOnlyGot.workSummary);
+        } finally {
+          await stop(planningOnly);
+        }
+
+        // 2. Full rollup across statuses + deleted work excluded
+        const rollupProj = await invoke(f.owner, 'projects.create', {
+          title: 'Rollup & Links Graph Project',
+        });
+        const rollupTask = await invoke(f.owner, 'tasks.create', {
+          title: 'Deliver live SSE and rollups',
+          projectId: rollupProj.id,
+        });
+        const rollupNote = await invoke(f.owner, 'notes.create', {
+          title: 'SSE design note',
+          body: 'Post-commit pg_notify drives SSE updates',
+          projectId: rollupProj.id,
+        });
+
+        const wReady = await createWork(f.owner, {
+          title: 'Rollup ready',
+          projectId: rollupProj.id,
+          taskId: rollupTask.id,
+          contextIds: [rollupNote.id],
+        });
+        const wActive = await createWork(f.owner, {
+          title: 'Rollup active',
+          projectId: rollupProj.id,
+          taskId: rollupTask.id,
+        });
+        await invoke(a.client, 'work.claim', { id: wActive.id });
+        await invoke(a.client, 'work.start', { id: wActive.id });
+
+        const wBlocked = await createWork(f.owner, {
+          title: 'Rollup blocked',
+          projectId: rollupProj.id,
+          taskId: rollupTask.id,
+        });
+        await invoke(a.client, 'work.claim', { id: wBlocked.id });
+        await invoke(a.client, 'work.block', { id: wBlocked.id, reason: 'Waiting on spec' });
+
+        const wFailed = await createWork(f.owner, {
+          title: 'Rollup failed',
+          projectId: rollupProj.id,
+          taskId: rollupTask.id,
+        });
+        await invoke(a.client, 'work.claim', { id: wFailed.id });
+        await invoke(a.client, 'work.fail', { id: wFailed.id, reason: 'Broken build' });
+
+        const wReview = await createWork(f.owner, {
+          title: 'Rollup review',
+          projectId: rollupProj.id,
+          taskId: rollupTask.id,
+        });
+        await invoke(a.client, 'work.claim', { id: wReview.id });
+        await invoke(a.client, 'work.start', { id: wReview.id });
+        await invoke(a.client, 'work.evidence', {
+          id: wReview.id,
+          planVersion: 1,
+          stepId: wReview.plan.steps[0].id,
+          attemptId: 'att-review',
+          outcome: 'passed',
+          output: 'ok',
+          provenance: 'test',
+        });
+        await invoke(a.client, 'work.review', { id: wReview.id, summary: 'Ready for review' });
+
+        const wDone = await createWork(f.owner, {
+          title: 'Rollup done',
+          projectId: rollupProj.id,
+          taskId: rollupTask.id,
+        });
+        await invoke(a.client, 'work.claim', { id: wDone.id });
+        await invoke(a.client, 'work.start', { id: wDone.id });
+        await invoke(a.client, 'work.evidence', {
+          id: wDone.id,
+          planVersion: 1,
+          stepId: wDone.plan.steps[0].id,
+          attemptId: 'att-done',
+          outcome: 'passed',
+          output: 'ok',
+          provenance: 'test',
+        });
+        await invoke(a.client, 'work.review', { id: wDone.id, summary: 'Complete' });
+        await invoke(f.owner, 'work.accept', { id: wDone.id, summary: 'Accepted' });
+
+        const wDeleted = await createWork(f.owner, {
+          title: 'Rollup deleted',
+          projectId: rollupProj.id,
+          taskId: rollupTask.id,
+        });
+        const wCancelled = await invoke(f.owner, 'work.cancel', {
+          id: wDeleted.id,
+          reason: 'Cancel before soft-delete',
+        });
+        await invoke(f.owner, 'work.delete', {
+          id: wDeleted.id,
+          revision: wCancelled.revision,
+          reason: 'Remove from rollup',
+        });
+
+        const expectedSummary = {
+          total: 6,
+          done: 1,
+          active: 1,
+          ready: 1,
+          needsReview: 1,
+          blocked: 1,
+          failed: 1,
+        };
+        const gotTask = await invoke(f.owner, 'tasks.get', { id: rollupTask.id });
+        assert.deepEqual(gotTask.workSummary, expectedSummary);
+        const listedTasks = await invoke(f.owner, 'tasks.list', { projectId: rollupProj.id });
+        assert.equal(listedTasks.length, 1);
+        assert.deepEqual(listedTasks[0].workSummary, expectedSummary);
+
+        // 3. Bounded links.graph depth 1..3, maxNodes truncation, includeDeleted & RLS/scope isolation
+        const graphD1 = await invoke(f.owner, 'links.graph', {
+          id: rollupTask.id,
+          depth: 1,
+        });
+        assert.equal(graphD1.rootId, rollupTask.id);
+        assert.equal(graphD1.depth, 1);
+        assert.equal(graphD1.truncated, false);
+        assert.ok(graphD1.nodes.some((n) => n.id === wReady.id && n.depth === 1));
+        assert.equal(
+          graphD1.nodes.some((n) => n.id === rollupNote.id),
+          false,
+          'Note is 2 hops from task (task <- work -> note)',
+        );
+        assert.equal(
+          graphD1.nodes.some((n) => n.id === wDeleted.id),
+          false,
+          'Deleted node must be excluded when includeDeleted=false',
+        );
+
+        const graphD2 = await invoke(f.owner, 'links.graph', {
+          id: rollupTask.id,
+          depth: 2,
+        });
+        assert.ok(graphD2.nodes.some((n) => n.id === rollupNote.id && n.depth === 2));
+        assert.ok(graphD2.nodes.some((n) => n.id === rollupProj.id && n.depth === 2));
+        assert.ok(
+          graphD2.edges.some(
+            (e) =>
+              e.sourceId === wReady.id &&
+              e.targetId === rollupTask.id &&
+              e.relation === 'implements',
+          ),
+        );
+
+        const graphTrunc = await invoke(f.owner, 'links.graph', {
+          id: rollupTask.id,
+          depth: 3,
+          maxNodes: 2,
+        });
+        assert.equal(graphTrunc.truncated, true);
+        assert.equal(graphTrunc.nodes.length, 2);
+
+        const graphWithDeleted = await invoke(f.owner, 'links.graph', {
+          id: rollupTask.id,
+          depth: 1,
+          includeDeleted: true,
+        });
+        assert.equal(graphWithDeleted.nodes.find((n) => n.id === wDeleted.id)?.deleted, true);
+
+        const scopeId = randomUUID();
+        const scopedReader = await agent(
+          f,
+          'scoped_events_agent',
+          ['foundation:read', 'context:read', 'context:write'],
+          { scopeId },
+        );
+        await reject(
+          () => invoke(scopedReader.client, 'links.graph', { id: rollupTask.id, depth: 2 }),
+          'not_found',
+        );
+
+        // 4. Authenticated GET /v1/events SSE delivers post-commit writes & enforces owner/scope isolation
+        const unauthRes = await fetch(new URL('/v1/events', f.url));
+        assert.equal(unauthRes.status, 401);
+
+        const ownerCred = await readCredentials(f.ownerPath);
+        const scopedCred = await readCredentials(scopedReader.path);
+        const ownerAbort = new AbortController();
+        const scopedAbort = new AbortController();
+
+        const openSse = async (cred, controller) => {
+          const res = await fetch(new URL('/v1/events', f.url), {
+            headers: { Authorization: `Bearer ${cred.token}` },
+            signal: controller.signal,
+          });
+          assert.equal(res.status, 200);
+          assert.match(res.headers.get('content-type') || '', /text\/event-stream/);
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          const state = { buf: '' };
+          const pump = (async () => {
+            try {
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                state.buf += decoder.decode(value, { stream: true });
+              }
+            } catch {
+              // Aborted cleanly on teardown.
+            }
+          })();
+          const waitFor = async (predicate, timeoutMs = 5000) => {
+            const deadline = Date.now() + timeoutMs;
+            while (!predicate(state.buf)) {
+              if (Date.now() > deadline) {
+                throw new Error(`Timed out waiting for SSE match. Buffer: ${state.buf}`);
+              }
+              await new Promise((r) => setTimeout(r, 20));
+            }
+          };
+          await waitFor((buf) => buf.includes(': connected'));
+          return { state, waitFor, pump };
+        };
+
+        try {
+          const ownerSse = await openSse(ownerCred, ownerAbort);
+          const scopedSse = await openSse(scopedCred, scopedAbort);
+
+          // Owner committed write reaches owner SSE, never leaks to scoped agent
+          await invoke(f.owner, 'notes.create', {
+            title: 'Owner SSE probe',
+            body: 'Delivered to personal owner stream only',
+          });
+          await ownerSse.waitFor(
+            (buf) => buf.includes('event: update') && buf.includes('"notes.create"'),
+          );
+          await new Promise((r) => setTimeout(r, 150));
+          assert.equal(
+            scopedSse.state.buf.includes('event: update'),
+            false,
+            'Scoped agent must never receive personal-scope SSE events',
+          );
+
+          // Scoped committed write reaches scoped SSE with scopeId, never leaks to personal owner
+          const ownerBufBeforeScoped = ownerSse.state.buf;
+          await invoke(scopedReader.client, 'notes.create', {
+            title: 'Scoped SSE probe',
+            body: 'Delivered to scoped stream only',
+          });
+          await scopedSse.waitFor(
+            (buf) =>
+              buf.includes('event: update') &&
+              buf.includes('"notes.create"') &&
+              buf.includes(scopeId),
+          );
+          await new Promise((r) => setTimeout(r, 150));
+          assert.equal(
+            ownerSse.state.buf,
+            ownerBufBeforeScoped,
+            'Personal owner must never receive scoped-agent SSE events',
+          );
+
+          // Rolled-back write emits zero SSE notifications
+          const ownerBufBeforeFail = ownerSse.state.buf;
+          await reject(
+            () =>
+              invoke(f.owner, 'work.update', {
+                id: wReady.id,
+                revision: 999,
+                title: 'Should roll back',
+                description: '',
+                reason: 'Stale revision rollback check',
+              }),
+            'revision_conflict',
+          );
+          await new Promise((r) => setTimeout(r, 150));
+          assert.equal(
+            ownerSse.state.buf,
+            ownerBufBeforeFail,
+            'Rolled-back write must not emit post-commit NOTIFY event',
+          );
+        } finally {
+          ownerAbort.abort();
+          scopedAbort.abort();
+        }
+      },
+    );
     await t.test('restart preserves accepted work and idempotency receipts', async () => {
       await stop(f);
       await start(f);

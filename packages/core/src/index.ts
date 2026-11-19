@@ -14,8 +14,30 @@ import { sanitizeReadPayload } from './readSanitizer.js';
 import { workOperation } from './work.js';
 import { contentOperation } from './content.js';
 import { extensionOperation } from './extensions.js';
+import { notifyDomainEvent } from './events.js';
+import { linksGraph } from './linksGraph.js';
 export * from './database.js';
 export * from './backup.js';
+export {
+  SIFTABLE_EVENTS_CHANNEL,
+  isDomainEventVisibleToPrincipal,
+  notifyDomainEvent,
+  parseDomainEventPayload,
+  subscribeDomainEvents,
+  type DomainEvent,
+  type DomainEventInput,
+} from './events.js';
+export {
+  buildBoundedLinksGraph,
+  linksGraph,
+  type LinksGraphEdge,
+  type LinksGraphInput,
+  type LinksGraphNode,
+  type LinksGraphResult,
+  type RawEntityRecord,
+  type RawLinkRecord,
+} from './linksGraph.js';
+export { emptyTaskWorkSummary, summarizeTaskWork, type TaskWorkSummary } from './content.js';
 export { deriveVerificationCoverage } from './verificationCoverage.js';
 export type { VerificationCoverage, VerificationStep } from './verificationTypes.js';
 export {
@@ -105,6 +127,10 @@ async function foundationOperation(
             ).rows
           : [],
     };
+  }
+  if (name === 'links.graph') {
+    const a = operations[name].input.parse(input);
+    return linksGraph(c, a);
   }
   if (name === 'modules.set') {
     const a = operations[name].input.parse(input);
@@ -221,6 +247,12 @@ export async function execute(
         'INSERT INTO foundation.audit(owner_id,scope_id,principal_id,operation) VALUES($1,$2,$3,$4)',
         [p.ownerId, p.scopeId, p.id, operation],
       );
+      await notifyDomainEvent(c, {
+        operation,
+        module: contract.module,
+        ownerId: p.ownerId,
+        scopeId: p.scopeId,
+      });
     }
     return !contract.write && p.role === 'agent' ? sanitizeReadPayload(result) : result;
   });

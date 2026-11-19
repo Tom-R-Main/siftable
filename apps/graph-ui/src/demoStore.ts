@@ -1,12 +1,21 @@
 import { randomUUID, createHash } from 'node:crypto';
+import { EventEmitter } from 'node:events';
 import {
   buildWorkGraph,
   deriveVerificationCoverage,
   type VerificationCoverage,
+  type WorkClaimability,
   type WorkGraphEdgeInput,
   type WorkGraphNodeInput,
   type WorkGraphResult,
 } from '@siftable/core';
+
+export interface DemoStoreUpdateEvent {
+  operation: string;
+  module: string;
+  scopeId: null;
+  timestamp: string;
+}
 
 export type HarnessKind =
   'antigravity' | 'codex' | 't3-code' | 'claude-code' | 'cursor' | 'cli' | 'other';
@@ -34,6 +43,7 @@ export interface DemoWorkDetail {
   plan_version: number;
   summary: string | null;
   claimable: boolean;
+  claimability?: WorkClaimability;
   plan: { version: number; steps: DemoStep[] };
   coverage: VerificationCoverage;
   links: unknown[];
@@ -101,10 +111,28 @@ export class DemoWorkStore {
   private items = new Map<string, DemoItem>();
   private deps: DemoDep[] = [];
   private sessions: HarnessSession[] = [];
+  private events = new EventEmitter();
   private seq = 1;
 
   constructor() {
+    this.events.setMaxListeners(100);
     this.seed();
+  }
+
+  onUpdate(listener: (event: DemoStoreUpdateEvent) => void): () => void {
+    this.events.on('update', listener);
+    return () => {
+      this.events.off('update', listener);
+    };
+  }
+
+  private emitUpdate(operation: string) {
+    this.events.emit('update', {
+      operation,
+      module: 'work',
+      scopeId: null,
+      timestamp: new Date().toISOString(),
+    } satisfies DemoStoreUpdateEvent);
   }
 
   private addItem(init: {
@@ -457,6 +485,7 @@ export class DemoWorkStore {
       plan_version: item.plan_version,
       summary: item.summary,
       claimable: node?.claimable ?? false,
+      ...(node?.claimability ? { claimability: node.claimability } : {}),
       plan: { version: item.plan_version, steps: item.steps },
       coverage: this.coverageOf(item),
       links: [],
@@ -489,12 +518,15 @@ export class DemoWorkStore {
     return item?.artifacts.find((a) => a.id === artifactId) ?? null;
   }
 
-  create(input: {
-    title: string;
-    description?: string;
-    dependencies?: { id: string; gate?: 'done' | 'commands_passed' }[];
-    steps?: { key: string; title: string; required?: boolean }[];
-  }): DemoWorkDetail | null {
+  create(
+    input: {
+      title: string;
+      description?: string;
+      dependencies?: { id: string; gate?: 'done' | 'commands_passed' }[];
+      steps?: { key: string; title: string; required?: boolean }[];
+    },
+    emit = true,
+  ): DemoWorkDetail | null {
     const id = randomUUID();
     const createdAt = new Date().toISOString();
     const steps: DemoStep[] = (
@@ -524,6 +556,7 @@ export class DemoWorkStore {
     for (const dep of input.dependencies ?? []) {
       if (this.items.has(dep.id)) this.addDep(id, dep.id, dep.gate ?? 'done');
     }
+    if (emit) this.emitUpdate('work.create');
     return this.getWork(id);
   }
 
@@ -541,7 +574,7 @@ export class DemoWorkStore {
       throw new Error('Fork only queued or blocked work');
     const created: DemoWorkDetail[] = [];
     for (const b of input.branches) {
-      const child = this.create({ title: b.title, description: b.description ?? '' });
+      const child = this.create({ title: b.title, description: b.description ?? '' }, false);
       if (child) {
         this.addDep(parent.id, child.id, input.gate ?? 'done');
         created.push(child);
@@ -557,6 +590,7 @@ export class DemoWorkStore {
       detail: { reason: input.reason },
       created_at: new Date().toISOString(),
     });
+    this.emitUpdate('work.fork');
     return { parent: this.getWork(parent.id), branches: created };
   }
 
@@ -575,6 +609,7 @@ export class DemoWorkStore {
       detail: { summary },
       created_at: new Date().toISOString(),
     });
+    this.emitUpdate('work.accept');
     return this.getWork(id);
   }
 
@@ -593,6 +628,7 @@ export class DemoWorkStore {
       detail: { reason },
       created_at: new Date().toISOString(),
     });
+    this.emitUpdate('work.requeue');
     return this.getWork(id);
   }
 
@@ -608,6 +644,7 @@ export class DemoWorkStore {
       detail: { reason },
       created_at: new Date().toISOString(),
     });
+    this.emitUpdate('work.cancel');
     return this.getWork(id);
   }
 }
