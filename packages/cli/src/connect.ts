@@ -633,7 +633,7 @@ export async function runConnect(options: ConnectOptions): Promise<ConnectResult
     const pluginManifest = {
       name: 'siftable-graph',
       displayName: 'Siftable Graph',
-      version: '0.1.0',
+      version: '0.2.0',
       description:
         'Local dependency-ordered task/work DAG sidecar, MCP tools, and workflow skill backed by Siftable.',
       author: {

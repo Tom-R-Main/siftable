@@ -13,7 +13,7 @@ const profile = process.env.SIFT_TOOLS?.split(',');
 const visible = async () =>
   (await client.catalog()).filter((x) => !profile || profile.includes(x.module));
 const server = new Server(
-  { name: 'siftable', version: '0.1.0' },
+  { name: 'siftable', version: '0.2.0' },
   {
     capabilities: { tools: { listChanged: false } },
     instructions:
